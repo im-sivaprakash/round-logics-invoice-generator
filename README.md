@@ -4,9 +4,10 @@ A React (Vite) app that turns a short project form into one client-ready PDF:
 **Terms & Conditions first, then the invoice on its own page**, branded with the Round Logics logo.
 
 - Everything renders in the browser with `@react-pdf/renderer` — no server, no data leaves the device.
-- Blank fields print as editable `[PLACEHOLDERS]`; nothing (bank, tax, legal, client details) is invented.
-- Phase titles, scopes and amounts appear identically in the T&C and the invoice; the total is calculated automatically.
-- The form autosaves in your browser. "Load sample" restores the Venee Art Sculptures brief; "Clear form" starts fresh.
+- Any field left blank is left out of the PDF — no placeholders, nothing invented.
+- Add, remove and reorder invoice items; they appear identically in the T&C and the invoice, and the total is calculated automatically.
+- Every invoice autosaves to the browser's localStorage. **Manage invoices** lists them with search, status (Draft / Sent / Paid / Cancelled), totals, edit, PDF download, duplicate, delete, and JSON backup / import.
+- "Load sample" fills in the Venee Art Sculptures brief.
 - File name: `Round_Logics_<Client_Name>_T&C_Invoice.pdf`.
 
 ## Run locally
@@ -27,7 +28,10 @@ npm run sample       # writes a sample PDF in the current folder (Node)
 
 | File | What it does |
 | --- | --- |
-| `src/App.jsx` | Form, live preview, download |
+| `src/App.jsx` | Navigation between New invoice and Manage invoices |
+| `src/Editor.jsx` | Invoice form, live preview, download |
+| `src/Manage.jsx` | Saved invoices list |
+| `src/storage.js` | localStorage save / load / backup |
 | `src/pdf/InvoiceDocument.jsx` | PDF layout and T&C wording |
 | `src/pdf/defaults.js` | Default / sample values |
 | `src/pdf/logo.js` | Round Logics logo paths (from the original SVG) |

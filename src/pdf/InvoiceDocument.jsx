@@ -3,7 +3,7 @@ import { Document, Page, View, Text, Svg, Path, StyleSheet } from '@react-pdf/re
 import { LOGO_PATHS, LOGO_VIEWBOX, LOGO_FILL } from './logo.js';
 import { FONT_STACK } from './fonts.js';
 import {
-  has, val, money, toNumber, formatDate, splitList, splitLines, phaseLabel, countWord,
+  has, clean, money, toNumber, formatDate, splitList, splitLines, countWord, activeItems, itemTitle, itemShort,
 } from './format.js';
 
 const INK = '#0c0c0c';
@@ -94,7 +94,7 @@ const P = ({ children }) => <Text style={s.p}>{children}</Text>;
 const B = ({ children }) => <Text style={s.strong}>{children}</Text>;
 
 function Bullets({ items, marker = '•' }) {
-  return items.map((item, i) => (
+  return items.filter(Boolean).map((item, i) => (
     <View key={i} style={s.bulletRow} wrap={false}>
       <Text style={s.bulletDot}>{marker === 'num' ? `${i + 1}.` : marker}</Text>
       <Text style={s.bulletText}>{item}</Text>
@@ -121,29 +121,30 @@ function Chrome({ label, client, header = true }) {
         </View>
       )}
       <View style={s.footer} fixed>
-        <Text>Round Logics · {client}</Text>
+        <Text>{['Round Logics', client].filter(Boolean).join(' · ')}</Text>
         <Text render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
       </View>
     </>
   );
 }
 
-function PhaseTable({ phases, showTotal, total }) {
+function ItemTable({ items, total }) {
+  const showTotal = has(total);
   return (
     <View style={s.table}>
       <View style={s.tr}>
         <Text style={[s.th, { width: 30 }]}>#</Text>
-        <Text style={[s.th, { flex: 1 }]}>Phase & scope</Text>
+        <Text style={[s.th, { flex: 1 }]}>Description</Text>
         <Text style={[s.th, s.right, { width: 90 }]}>Amount</Text>
       </View>
-      {phases.map((ph, i) => (
-        <View key={i} style={i === phases.length - 1 && !showTotal ? s.trLast : s.tr} wrap={false}>
+      {items.map((it, i) => (
+        <View key={i} style={i === items.length - 1 && !showTotal ? s.trLast : s.tr} wrap={false}>
           <Text style={[s.td, { width: 30 }]}>{i + 1}</Text>
           <View style={[s.td, { flex: 1 }]}>
-            <Text style={s.strong}>{val(ph.title, `${phaseLabel(i).toUpperCase()} TITLE`)}</Text>
-            <Text style={{ color: MUTED }}>{val(ph.deliverables, `${phaseLabel(i).toUpperCase()} DELIVERABLES`)}</Text>
+            {has(it.title) && <Text style={s.strong}>{clean(it.title)}</Text>}
+            {has(it.deliverables) && <Text style={{ color: MUTED }}>{clean(it.deliverables)}</Text>}
           </View>
-          <Text style={[s.td, s.right, { width: 90, fontWeight: 600 }]}>{money(ph.amount)}</Text>
+          <Text style={[s.td, s.right, { width: 90, fontWeight: 600 }]}>{money(it.amount)}</Text>
         </View>
       ))}
       {showTotal && (
@@ -157,6 +158,7 @@ function PhaseTable({ phases, showTotal, total }) {
 }
 
 function KV({ k, v }) {
+  if (!has(v)) return null;
   return (
     <View style={s.kv}>
       <Text style={s.kvKey}>{k}</Text>
@@ -165,28 +167,51 @@ function KV({ k, v }) {
   );
 }
 
+function Meta({ label, value }) {
+  if (!has(value)) return null;
+  return (
+    <View style={s.metaCell}>
+      <Text style={s.metaLabel}>{label}</Text>
+      <Text style={s.metaValue}>{value}</Text>
+    </View>
+  );
+}
+
+// Any field left blank is simply left out of the PDF.
 export default function InvoiceDocument({ data }) {
   const d = data;
-  const client = val(d.clientName, 'CLIENT NAME');
-  const provider = val(d.providerName, 'PROVIDER NAME');
+  const client = clean(d.clientName);
+  const provider = clean(d.providerName) || 'Round Logics';
   const pages = splitList(d.pages);
-  const phases = d.phases?.length ? d.phases : [];
-  const total = phases.reduce((sum, p) => sum + toNumber(p.amount), 0);
-  const anyAmount = phases.some((p) => has(p.amount));
+  const items = activeItems(d.phases);
+  const anyAmount = items.some((p) => has(p.amount));
+  const total = anyAmount ? items.reduce((sum, p) => sum + toNumber(p.amount), 0) : '';
   const exclusions = splitLines(d.exclusions);
   const minorN = toNumber(d.includedMinorReviews);
   const majorN = toNumber(d.includedMajorReviews);
-  const lastPhase = phases.length ? phaseLabel(phases.length - 1) : 'final phase';
-  const invNo = val(d.invoiceNumber, 'INVOICE NUMBER');
+  const invNo = clean(d.invoiceNumber);
+  const invDate = formatDate(d.invoiceDate);
+  const dueDate = formatDate(d.dueDate);
+  const lastItem = items.length > 1 ? items[items.length - 1] : null;
 
-  const reviewText = [
-    `${countWord(minorN)} (${minorN}) minor design review`,
-    `${countWord(majorN)} (${majorN}) major design review`,
-  ].join(' and ');
+  const reviews = [
+    minorN > 0 && `${countWord(minorN)} (${minorN}) minor design review${minorN > 1 ? 's' : ''}`,
+    majorN > 0 && `${countWord(majorN)} (${majorN}) major design review${majorN > 1 ? 's' : ''}`,
+  ].filter(Boolean);
+
+  const bank = [
+    ['Account name', d.bankAccountName], ['Bank', d.bankName], ['Account number', d.bankAccountNumber],
+    ['IFSC', d.bankIfsc], ['Branch', d.bankBranch], ['UPI ID', d.upiId],
+  ].filter(([, v]) => has(v));
+
+  // Sections are numbered as they are included.
+  let n = 0;
+  const next = () => ++n;
+  const sec = {};
 
   return (
     <Document
-      title={`Round Logics – ${client} – Terms & Conditions and Invoice`}
+      title={['Round Logics', client, 'Terms & Conditions and Invoice'].filter(Boolean).join(' – ')}
       author="Round Logics"
       subject="Website project Terms & Conditions and Invoice"
     >
@@ -198,26 +223,32 @@ export default function InvoiceDocument({ data }) {
         <Text style={s.subtitle}>Website design and development services</Text>
 
         <View style={s.metaRow}>
-          <View style={s.metaCell}><Text style={s.metaLabel}>Service provider</Text><Text style={s.metaValue}>{provider}</Text></View>
-          <View style={s.metaCell}><Text style={s.metaLabel}>Client</Text><Text style={s.metaValue}>{client}</Text></View>
-          <View style={s.metaCell}><Text style={s.metaLabel}>Reference</Text><Text style={s.metaValue}>{invNo}</Text></View>
-          <View style={s.metaCell}><Text style={s.metaLabel}>Date</Text><Text style={s.metaValue}>{formatDate(d.invoiceDate)}</Text></View>
+          <Meta label="Service provider" value={provider} />
+          <Meta label="Client" value={client} />
+          <Meta label="Reference" value={invNo} />
+          <Meta label="Date" value={invDate} />
         </View>
 
-        <Section n={1} title="Agreement">
+        <Section n={(sec.agreement = next())} title="Agreement">
           <P>
-            These Terms & Conditions ("Terms") govern the website design and development services provided by {provider} ("Round Logics", "we") to {client} ("the Client"). The Terms apply together with the invoice that follows. By approving the project, making any payment or providing content for the work, the Client accepts these Terms.
+            These Terms & Conditions ("Terms") govern the website design and development services provided by {provider} ("Round Logics", "we") to {client ? `${client} ("the Client")` : 'the Client'}. The Terms apply together with the invoice that follows. By approving the project, making any payment or providing content for the work, the Client accepts these Terms.
           </P>
         </Section>
 
-        <Section n={2} title="Scope of Work">
-          <P><B>Agreed website pages ({pages.length || 0}): </B>{pages.length ? pages.join(', ') : '[LIST OF WEBSITE PAGES]'}.</P>
-          <P>The work is delivered in the following phases. Each phase is billed separately, as shown on the invoice.</P>
-          <PhaseTable phases={phases} showTotal total={anyAmount ? total : ''} />
-          <P>Any page, feature or service not listed above is outside the scope of this project and is handled as set out in Section 9.</P>
+        <Section n={(sec.scope = next())} title="Scope of Work">
+          {pages.length > 0 && (
+            <P><B>Agreed website pages ({pages.length}): </B>{pages.join(', ')}.</P>
+          )}
+          {items.length > 0 && (
+            <>
+              <P>{items.length > 1 ? 'The work is delivered in the following phases. Each phase is billed separately, as shown on the invoice.' : 'The work covered by this project:'}</P>
+              <ItemTable items={items} total={items.length > 1 ? total : ''} />
+            </>
+          )}
+          <P>Any page, feature or service not listed above is outside the scope of this project and is quoted separately.</P>
         </Section>
 
-        <Section n={3} title="Workflow & Approval Stages">
+        <Section n={next()} title="Workflow & Approval Stages">
           <Bullets
             marker="num"
             items={[
@@ -226,28 +257,31 @@ export default function InvoiceDocument({ data }) {
               'Design review: the Client reviews the design and gives consolidated feedback; the revised design is then approved in writing (email or message is sufficient).',
               'Development: the approved design is built into a working website.',
               'Testing & client review: the Client reviews the developed website and reports any issues.',
-              'Launch & handover: the website goes live and access is handed over as set out in Section 10.',
+              'Launch & handover: the website goes live and access is handed over to the Client.',
             ]}
           />
           <P>Work on each stage starts once the previous stage is approved. Approved designs are treated as final for development.</P>
         </Section>
 
-        <Section n={4} title="Revisions">
-          <P>The base scope includes {reviewText}.</P>
+        <Section n={next()} title="Revisions">
+          {reviews.length > 0 && <P>The base scope includes {reviews.join(' and ')}.</P>}
           <Bullets
             items={[
               'Minor revision: small changes within the approved layout, such as text, image replacements, colours, fonts or spacing.',
               'Major revision: structural changes, such as reworking a page layout, adding or redesigning sections, or changing the design direction.',
-              `Each additional minor revision is charged at ${money(d.minorRevisionCharge, 'MINOR REVISION CHARGE')}.`,
-              `Each additional major revision is charged at ${money(d.majorRevisionCharge, 'MAJOR REVISION CHARGE')}.`,
+              has(d.minorRevisionCharge) && `Each additional minor revision is charged at ${money(d.minorRevisionCharge)}.`,
+              has(d.majorRevisionCharge) && `Each additional major revision is charged at ${money(d.majorRevisionCharge)}.`,
               'Feedback should be shared in one consolidated list per review round. Requests that change the agreed scope are quoted separately.',
             ]}
           />
         </Section>
 
-        <Section n={5} title="Timeline & Client Dependencies">
+        <Section n={next()} title="Timeline & Client Dependencies">
           <P>
-            The estimated project timeline is <B>{val(d.timelineDays, 'NUMBER OF')} days</B>, subject to timely receipt of the Client's content, approvals and access. The timeline depends on the Client:
+            {has(d.timelineDays)
+              ? <>The estimated project timeline is <B>{clean(d.timelineDays)} days</B>, subject to timely receipt of the Client's content, approvals and access. </>
+              : 'The project timeline is subject to timely receipt of the Client\'s content, approvals and access. '}
+            The timeline depends on the Client:
           </P>
           <Bullets
             items={[
@@ -259,62 +293,76 @@ export default function InvoiceDocument({ data }) {
           <P>Delays in any of these extend the timeline by a corresponding period. Round Logics is not responsible for delays caused by the Client or third parties.</P>
         </Section>
 
-        <Section n={6} title="Payment Terms">
-          <P>{val(d.paymentTerms, 'PAYMENT TERMS')}</P>
+        <Section n={next()} title="Payment Terms">
+          {has(d.paymentTerms) && <P>{clean(d.paymentTerms)}</P>}
           <Bullets
             items={[
-              ...phases.map((ph, i) => `${phaseLabel(i)}: ${money(ph.amount)}, billed as a separate line item on the invoice.`),
-              'Payments are made using the payment details provided on the invoice.',
+              ...items
+                .filter((it) => has(it.amount))
+                .map((it, i) => `${itemTitle(it, i)}: ${money(it.amount)}, billed as a separate line item on the invoice.`),
+              bank.length > 0 && 'Payments are made using the payment details provided on the invoice.',
             ]}
           />
         </Section>
 
-        <Section n={7} title="Overdue Payments">
+        <Section n={next()} title="Overdue Payments">
           <P>
-            Payments must be made by their due dates. If the {lastPhase} payment remains unpaid <B>{val(d.suspensionDays, 'NUMBER OF')} days</B> after its due date, Round Logics may, after giving the Client prior notice, suspend the website and related services until all outstanding amounts are paid. Services are restored once payment is received. Work on any phase may also be paused while a payment for that project is overdue.
+            Payments must be made by their due dates.{' '}
+            {has(d.suspensionDays) && (
+              <>
+                If the {lastItem ? `${itemTitle(lastItem, items.length - 1)} payment` : 'final payment'} remains unpaid <B>{clean(d.suspensionDays)} days</B> after its due date, Round Logics may, after giving the Client prior notice, suspend the website and related services until all outstanding amounts are paid. Services are restored once payment is received.{' '}
+              </>
+            )}
+            Work on the project may be paused while a payment is overdue.
           </P>
         </Section>
 
-        <Section n={8} title="Annual Domain & Hosting Renewal">
-          <P>
-            Domain and hosting are renewed annually at <B>{money(d.renewalCharge, 'RENEWAL CHARGE')} per year</B>, payable before the renewal date. If the renewal is not paid in time, the domain or hosting may expire, which can take the website offline or lead to loss of the domain. Round Logics is not responsible for downtime or loss resulting from non-renewal.
-          </P>
+        {has(d.renewalCharge) && (
+          <Section n={next()} title="Annual Domain & Hosting Renewal">
+            <P>
+              Domain and hosting are renewed annually at <B>{money(d.renewalCharge)} per year</B>, payable before the renewal date. If the renewal is not paid in time, the domain or hosting may expire, which can take the website offline or lead to loss of the domain. Round Logics is not responsible for downtime or loss resulting from non-renewal.
+            </P>
+          </Section>
+        )}
+
+        <Section n={next()} title="Exclusions & Additional Work">
+          {exclusions.length > 0 && (
+            <>
+              <P>The following are not included in this project and, if required, will be quoted separately:</P>
+              <Bullets items={exclusions} />
+            </>
+          )}
+          <P>Any work outside the scope in Section {sec.scope}, including new pages, new features or third-party costs, is quoted in writing and starts only after the Client approves the quotation.</P>
         </Section>
 
-        <Section n={9} title="Exclusions & Additional Work">
-          <P>The following are not included in this project and, if required, will be quoted separately:</P>
-          <Bullets items={exclusions.length ? exclusions : ['[LIST ADDITIONAL FEATURES, EXCLUSIONS OR SEPARATELY QUOTED WORK]']} />
-          <P>Any work outside the scope in Section 2, including new pages, new features or third-party costs, is quoted in writing and starts only after the Client approves the quotation.</P>
-        </Section>
-
-        <Section n={10} title="Testing & Handover">
+        <Section n={next()} title="Testing & Handover">
           <P>
             Round Logics tests the website on current versions of major browsers and on desktop and mobile screen sizes before launch. After launch and receipt of full payment, Round Logics hands over the relevant website access and login details to the Client. Issues reported after handover that are caused by changes made by the Client or third parties are outside the scope of this project.
           </P>
         </Section>
 
-        <Section n={11} title="Cancellation">
+        <Section n={next()} title="Cancellation">
           <P>
             Either party may cancel the project by written notice. If the project is cancelled, the Client pays for all work completed up to the cancellation date, and payments already made for completed work are non-refundable. If the Client does not respond or provide required content for an extended period, Round Logics may treat the project as paused and agree a revised timeline before resuming.
           </P>
         </Section>
 
-        <Section n={12} title="Content & Ownership">
+        <Section n={next()} title="Content & Ownership">
           <P>
             The Client confirms that it has the right to use all content, images and materials it provides. Ownership of the final website design and content passes to the Client on receipt of full payment. Round Logics may display the completed website in its portfolio unless the Client asks otherwise in writing.
           </P>
         </Section>
 
-        <Section n={13} title="Acceptance">
+        <Section n={next()} title="Acceptance">
           <P>
             The website is accepted when the Client approves it in writing or when it is published live at the Client's request. Approval of these Terms is confirmed by signing below or by written confirmation from the Client.
           </P>
-          {has(d.additionalNotes) && <P><B>Additional notes: </B>{d.additionalNotes.trim()}</P>}
+          {has(d.additionalNotes) && <P><B>Additional notes: </B>{clean(d.additionalNotes)}</P>}
           <View style={s.signRow} wrap={false}>
             {[['For Round Logics', provider], ['For the Client', client]].map(([lbl, name]) => (
               <View key={lbl} style={s.signBox}>
                 <Text style={s.strong}>{lbl}</Text>
-                <Text style={s.small}>{name}</Text>
+                {has(name) && <Text style={s.small}>{name}</Text>}
                 <Text style={s.signLine}>Name:</Text>
                 <Text style={s.signLine}>Signature:</Text>
                 <Text style={s.signLine}>Date:</Text>
@@ -334,8 +382,8 @@ export default function InvoiceDocument({ data }) {
             <Text style={s.invTitle}>INVOICE</Text>
             <View>
               <KV k="Invoice number" v={invNo} />
-              <KV k="Invoice date" v={formatDate(d.invoiceDate)} />
-              <KV k="Due date" v={has(d.dueDate) ? formatDate(d.dueDate) : 'As per payment terms'} />
+              <KV k="Invoice date" v={invDate} />
+              <KV k="Due date" v={dueDate} />
             </View>
           </View>
         </View>
@@ -344,61 +392,71 @@ export default function InvoiceDocument({ data }) {
           <View style={s.party}>
             <Text style={s.metaLabel}>From</Text>
             <Text style={s.partyName}>{provider}</Text>
-            <Text>{val(d.providerAddress, 'PROVIDER ADDRESS')}</Text>
-            <Text>{val(d.providerEmail, 'PROVIDER EMAIL')}</Text>
-            {has(d.providerPhone) && <Text>{d.providerPhone}</Text>}
+            {has(d.providerAddress) && <Text>{clean(d.providerAddress)}</Text>}
+            {has(d.providerEmail) && <Text>{clean(d.providerEmail)}</Text>}
+            {has(d.providerPhone) && <Text>{clean(d.providerPhone)}</Text>}
           </View>
-          <View style={s.party}>
-            <Text style={s.metaLabel}>Bill to</Text>
-            <Text style={s.partyName}>{client}</Text>
-            {has(d.clientContactPerson) && <Text>Attn: {d.clientContactPerson}</Text>}
-            <Text>{val(d.clientAddress, 'CLIENT ADDRESS')}</Text>
-            <Text>{val(d.clientEmail, 'CLIENT EMAIL')}</Text>
-            {has(d.clientPhone) && <Text>{d.clientPhone}</Text>}
-          </View>
+          {client && (
+            <View style={s.party}>
+              <Text style={s.metaLabel}>Bill to</Text>
+              <Text style={s.partyName}>{client}</Text>
+              {has(d.clientContactPerson) && <Text>Attn: {clean(d.clientContactPerson)}</Text>}
+              {has(d.clientAddress) && <Text>{clean(d.clientAddress)}</Text>}
+              {has(d.clientEmail) && <Text>{clean(d.clientEmail)}</Text>}
+              {has(d.clientPhone) && <Text>{clean(d.clientPhone)}</Text>}
+            </View>
+          )}
         </View>
 
-        <Text style={[s.small, { marginBottom: 2 }]}>
-          Project: Website design and development · Pages: {pages.length ? pages.join(', ') : '[LIST OF WEBSITE PAGES]'}
-        </Text>
-        <PhaseTable phases={phases} />
+        {pages.length > 0 && (
+          <Text style={[s.small, { marginBottom: 2 }]}>
+            Project: Website design and development · Pages: {pages.join(', ')}
+          </Text>
+        )}
+        {items.length > 0 && <ItemTable items={items} />}
 
-        <View style={s.totalsWrap}>
-          <View style={s.totals}>
-            {phases.map((ph, i) => (
-              <View key={i} style={s.totalRow}>
-                <Text style={{ color: MUTED }}>{phaseLabel(i)}</Text>
-                <Text>{money(ph.amount)}</Text>
+        {anyAmount && (
+          <View style={s.totalsWrap}>
+            <View style={s.totals}>
+              {items.length > 1 && items.map((it, i) => has(it.amount) && (
+                <View key={i} style={s.totalRow}>
+                  <Text style={{ color: MUTED }}>{itemShort(it, i)}</Text>
+                  <Text>{money(it.amount)}</Text>
+                </View>
+              ))}
+              <View style={s.grandRow}>
+                <Text style={{ fontWeight: 700 }}>Total</Text>
+                <Text style={{ fontWeight: 700 }}>{money(total)}</Text>
               </View>
-            ))}
-            <View style={s.grandRow}>
-              <Text style={{ fontWeight: 700 }}>Total</Text>
-              <Text style={{ fontWeight: 700 }}>{anyAmount ? money(total) : money('')}</Text>
             </View>
           </View>
-        </View>
+        )}
 
-        <View style={s.box} wrap={false}>
-          <Text style={[s.h2, { marginTop: 0 }]}>Payment instructions</Text>
-          <KV k="Account name" v={val(d.bankAccountName, 'ACCOUNT NAME')} />
-          <KV k="Bank" v={val(d.bankName, 'BANK NAME')} />
-          <KV k="Account number" v={val(d.bankAccountNumber, 'ACCOUNT NUMBER')} />
-          <KV k="IFSC" v={val(d.bankIfsc, 'IFSC CODE')} />
-          {has(d.bankBranch) && <KV k="Branch" v={d.bankBranch} />}
-          <KV k="UPI ID" v={val(d.upiId, 'UPI ID')} />
-          <Text style={[s.small, { marginTop: 6 }]}>Please quote invoice number {invNo} as the payment reference.</Text>
-        </View>
+        {bank.length > 0 && (
+          <View style={s.box} wrap={false}>
+            <Text style={[s.h2, { marginTop: 0 }]}>Payment instructions</Text>
+            {bank.map(([k, v]) => <KV key={k} k={k} v={clean(v)} />)}
+            {invNo && <Text style={[s.small, { marginTop: 6 }]}>Please quote invoice number {invNo} as the payment reference.</Text>}
+          </View>
+        )}
 
-        <View style={[s.box, { backgroundColor: TINT, borderWidth: 0 }]} wrap={false}>
-          <Text style={[s.h2, { marginTop: 0 }]}>Notes</Text>
-          <Text>{val(d.paymentTerms, 'PAYMENT TERMS')}</Text>
-          <Text style={{ marginTop: 3 }}>
-            Annual domain and hosting renewal: {money(d.renewalCharge, 'RENEWAL CHARGE')} per year (billed separately). Additional revisions and out-of-scope work are charged as set out in the Terms & Conditions above.
-          </Text>
-        </View>
+        {(has(d.paymentTerms) || has(d.renewalCharge)) && (
+          <View style={[s.box, { backgroundColor: TINT, borderWidth: 0 }]} wrap={false}>
+            <Text style={[s.h2, { marginTop: 0 }]}>Notes</Text>
+            {has(d.paymentTerms) && <Text>{clean(d.paymentTerms)}</Text>}
+            {has(d.renewalCharge) && (
+              <Text style={{ marginTop: 3 }}>
+                Annual domain and hosting renewal: {money(d.renewalCharge)} per year (billed separately).
+              </Text>
+            )}
+            <Text style={{ marginTop: 3 }}>
+              Additional revisions and out-of-scope work are charged as set out in the Terms & Conditions above.
+            </Text>
+          </View>
+        )}
 
         <Text style={[s.small, { marginTop: 18, textAlign: 'center' }]}>
-          Thank you for choosing Round Logics. For any questions about this invoice, contact {val(d.providerEmail, 'PROVIDER EMAIL')}.
+          Thank you for choosing Round Logics.{has(d.providerEmail) ? ` For any questions about this invoice, contact ${clean(d.providerEmail)}.` : ''}
         </Text>
       </Page>
     </Document>

@@ -1,5 +1,5 @@
 // Default form values. Pre-filled with the Venee Art Sculptures project brief.
-// Leave any field blank and the PDF prints an editable [PLACEHOLDER] in its place.
+// Any field left blank is left out of the PDF.
 
 export const emptyPhase = () => ({ title: '', deliverables: '', amount: '' });
 
@@ -59,11 +59,19 @@ export const defaultData = {
   upiId: '',
 };
 
-export const blankData = () => ({
+// A fresh invoice: Round Logics details and standard terms, client and items left blank.
+export const newInvoiceData = () => ({
   ...Object.fromEntries(Object.keys(defaultData).map((k) => [k, ''])),
-  providerName: 'Round Logics',
-  providerEmail: 'sivaprakash.m@roundlogics.com',
-  phases: [emptyPhase(), emptyPhase()],
-  includedMinorReviews: '1',
-  includedMajorReviews: '1',
+  providerName: defaultData.providerName,
+  providerEmail: defaultData.providerEmail,
+  timelineDays: defaultData.timelineDays,
+  includedMinorReviews: defaultData.includedMinorReviews,
+  includedMajorReviews: defaultData.includedMajorReviews,
+  minorRevisionCharge: defaultData.minorRevisionCharge,
+  majorRevisionCharge: defaultData.majorRevisionCharge,
+  renewalCharge: defaultData.renewalCharge,
+  suspensionDays: defaultData.suspensionDays,
+  paymentTerms: defaultData.paymentTerms,
+  invoiceDate: new Date().toLocaleDateString('en-CA'), // local YYYY-MM-DD
+  phases: [emptyPhase()],
 });
