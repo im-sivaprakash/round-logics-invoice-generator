@@ -1,3 +1,5 @@
+import { getSettings, PROVIDER_KEYS, BANK_KEYS, TERMS_KEYS, pick } from '../settings.js';
+
 // Default form values. Pre-filled with the Venee Art Sculptures project brief.
 // Any field left blank is left out of the PDF.
 
@@ -57,21 +59,26 @@ export const defaultData = {
   bankIfsc: '',
   bankBranch: '',
   upiId: '',
+
+  currency: 'INR',
+  docType: 'tc-invoice',
 };
 
-// A fresh invoice: Round Logics details and standard terms, client and items left blank.
-export const newInvoiceData = () => ({
+// A fresh invoice: provider, bank, currency and standard terms come from Settings.
+export const newInvoiceData = (settings = getSettings()) => ({
   ...Object.fromEntries(Object.keys(defaultData).map((k) => [k, ''])),
-  providerName: defaultData.providerName,
-  providerEmail: defaultData.providerEmail,
-  timelineDays: defaultData.timelineDays,
-  includedMinorReviews: defaultData.includedMinorReviews,
-  includedMajorReviews: defaultData.includedMajorReviews,
-  minorRevisionCharge: defaultData.minorRevisionCharge,
-  majorRevisionCharge: defaultData.majorRevisionCharge,
-  renewalCharge: defaultData.renewalCharge,
-  suspensionDays: defaultData.suspensionDays,
-  paymentTerms: defaultData.paymentTerms,
+  ...pick(settings, [...PROVIDER_KEYS, ...BANK_KEYS, ...TERMS_KEYS]),
+  currency: settings.currency,
+  docType: settings.docType,
+  invoiceNumber: settings.invoicePrefix || '',
   invoiceDate: new Date().toLocaleDateString('en-CA'), // local YYYY-MM-DD
   phases: [emptyPhase()],
+});
+
+// The Venee Art Sculptures sample, using your saved provider, bank and currency settings.
+export const sampleData = (settings = getSettings()) => ({
+  ...defaultData,
+  ...pick(settings, [...PROVIDER_KEYS, ...BANK_KEYS]),
+  currency: settings.currency,
+  docType: settings.docType,
 });

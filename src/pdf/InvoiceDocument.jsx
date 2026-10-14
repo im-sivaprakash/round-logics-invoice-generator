@@ -3,7 +3,7 @@ import { Document, Page, View, Text, Svg, Path, StyleSheet } from '@react-pdf/re
 import { LOGO_PATHS, LOGO_VIEWBOX, LOGO_FILL } from './logo.js';
 import { FONT_STACK } from './fonts.js';
 import {
-  has, clean, money, toNumber, formatDate, splitList, splitLines, countWord, activeItems, itemTitle, itemShort,
+  has, clean, money as formatMoney, toNumber, formatDate, splitList, splitLines, countWord, activeItems, itemTitle, itemShort,
 } from './format.js';
 
 const INK = '#0c0c0c';
@@ -128,7 +128,7 @@ function Chrome({ label, client, header = true }) {
   );
 }
 
-function ItemTable({ items, total }) {
+function ItemTable({ items, total, money }) {
   const showTotal = has(total);
   return (
     <View style={s.table}>
@@ -180,6 +180,8 @@ function Meta({ label, value }) {
 // Any field left blank is simply left out of the PDF.
 export default function InvoiceDocument({ data }) {
   const d = data;
+  const money = (v) => formatMoney(v, d.currency || 'INR');
+  const withTerms = d.docType !== 'invoice';
   const client = clean(d.clientName);
   const provider = clean(d.providerName) || 'Round Logics';
   const pages = splitList(d.pages);
@@ -211,11 +213,12 @@ export default function InvoiceDocument({ data }) {
 
   return (
     <Document
-      title={['Round Logics', client, 'Terms & Conditions and Invoice'].filter(Boolean).join(' – ')}
+      title={['Round Logics', client, withTerms ? 'Terms & Conditions and Invoice' : 'Invoice'].filter(Boolean).join(' – ')}
       author="Round Logics"
       subject="Website project Terms & Conditions and Invoice"
     >
-      {/* ---------------- TERMS & CONDITIONS ---------------- */}
+      {/* ---------------- TERMS & CONDITIONS (skipped for "Invoice only") ---------------- */}
+      {withTerms && (
       <Page size="A4" style={s.page}>
         <Chrome label="Terms & Conditions" client={client} />
 
@@ -242,7 +245,7 @@ export default function InvoiceDocument({ data }) {
           {items.length > 0 && (
             <>
               <P>{items.length > 1 ? 'The work is delivered in the following phases. Each phase is billed separately, as shown on the invoice.' : 'The work covered by this project:'}</P>
-              <ItemTable items={items} total={items.length > 1 ? total : ''} />
+              <ItemTable items={items} total={items.length > 1 ? total : ''} money={money} />
             </>
           )}
           <P>Any page, feature or service not listed above is outside the scope of this project and is quoted separately.</P>
@@ -371,8 +374,9 @@ export default function InvoiceDocument({ data }) {
           </View>
         </Section>
       </Page>
+      )}
 
-      {/* ---------------- INVOICE (always a new page) ---------------- */}
+      {/* ---------------- INVOICE (always its own page) ---------------- */}
       <Page size="A4" style={[s.page, { paddingTop: 44 }]}>
         <Chrome label="Invoice" client={client} header={false} />
 
@@ -413,7 +417,7 @@ export default function InvoiceDocument({ data }) {
             Project: Website design and development · Pages: {pages.join(', ')}
           </Text>
         )}
-        {items.length > 0 && <ItemTable items={items} />}
+        {items.length > 0 && <ItemTable items={items} money={money} />}
 
         {anyAmount && (
           <View style={s.totalsWrap}>
@@ -449,9 +453,11 @@ export default function InvoiceDocument({ data }) {
                 Annual domain and hosting renewal: {money(d.renewalCharge)} per year (billed separately).
               </Text>
             )}
-            <Text style={{ marginTop: 3 }}>
-              Additional revisions and out-of-scope work are charged as set out in the Terms & Conditions above.
-            </Text>
+            {withTerms && (
+              <Text style={{ marginTop: 3 }}>
+                Additional revisions and out-of-scope work are charged as set out in the Terms & Conditions above.
+              </Text>
+            )}
           </View>
         )}
 

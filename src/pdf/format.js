@@ -7,10 +7,16 @@ export const toNumber = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-const inr = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+import { currencyInfo } from '../settings.js';
 
-// ₹28,000 — or '' when no amount was given
-export const money = (v) => (has(v) ? `₹${inr.format(toNumber(v))}` : '');
+const formatters = {};
+// ₹28,000 / $28,000 — or '' when no amount was given
+export const money = (v, currency = 'INR') => {
+  if (!has(v)) return '';
+  const c = currencyInfo(currency);
+  formatters[c.locale] ??= new Intl.NumberFormat(c.locale, { maximumFractionDigits: 2 });
+  return `${c.symbol}${formatters[c.locale].format(toNumber(v))}`;
+};
 
 export const formatDate = (iso) => {
   if (!has(iso)) return '';
@@ -41,9 +47,10 @@ export const itemShort = (it, i) => {
 
 export const itemsTotal = (items) => (items || []).reduce((s, it) => s + toNumber(it.amount), 0);
 
-export const fileNameFor = (client) => {
+export const fileNameFor = (client, docType = 'tc-invoice') => {
   const safe = String(client || '').trim().replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-  return safe ? `Round_Logics_${safe}_T&C_Invoice.pdf` : 'Round_Logics_T&C_Invoice.pdf';
+  const kind = docType === 'invoice' ? 'Invoice' : 'T&C_Invoice';
+  return ['Round_Logics', safe, kind].filter(Boolean).join('_') + '.pdf';
 };
 
 export const countWord = (n) => {

@@ -1,5 +1,6 @@
 // All invoices live in this browser's localStorage under one key.
 import { defaultData } from './pdf/defaults.js';
+import { getSettings, saveSettings } from './settings.js';
 import { itemsTotal } from './pdf/format.js';
 
 const KEY = 'rl-invoices-v1';
@@ -72,7 +73,7 @@ export function setStatus(id, status) {
 export const recordTotal = (rec) => itemsTotal(rec?.data?.phases);
 
 export function exportAll() {
-  return JSON.stringify({ app: 'round-logics-invoice-generator', version: 1, invoices: read() }, null, 2);
+  return JSON.stringify({ app: 'round-logics-invoice-generator', version: 2, settings: getSettings(), invoices: read() }, null, 2);
 }
 
 // Merges invoices from a backup file; same id = overwritten by the backup.
@@ -83,5 +84,6 @@ export function importAll(text) {
   const byId = new Map(read().map((r) => [r.id, r]));
   incoming.filter((r) => r && r.id && r.data).forEach((r) => byId.set(r.id, r));
   write([...byId.values()]);
+  if (parsed.settings && typeof parsed.settings === 'object') saveSettings({ ...getSettings(), ...parsed.settings });
   return incoming.length;
 }

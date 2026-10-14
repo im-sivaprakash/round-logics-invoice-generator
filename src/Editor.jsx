@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { renderBlob, downloadPdf } from './download.jsx';
-import { defaultData, newInvoiceData, emptyPhase } from './pdf/defaults.js';
+import { sampleData, newInvoiceData, emptyPhase } from './pdf/defaults.js';
+import { CURRENCIES, DOC_TYPES, BANK_KEYS, PROVIDER_KEYS, getSettings, pick } from './settings.js';
 import { fileNameFor, money, itemsTotal, has } from './pdf/format.js';
 import { getInvoice, makeRecord, saveInvoice } from './storage.js';
 import { STATUSES } from './statuses.js';
@@ -25,8 +26,7 @@ function Group({ title, children, defaultOpen = true }) {
 }
 
 const worthSaving = (d) =>
-  has(d.clientName) || has(d.invoiceNumber) ||
-  (d.phases || []).some((p) => has(p.title) || has(p.amount));
+  has(d.clientName) || (d.phases || []).some((p) => has(p.title) || has(p.amount));
 
 export default function Editor({ id, navigate }) {
   const [record, setRecord] = useState(() => (id && getInvoice(id)) || makeRecord(newInvoiceData()));
@@ -88,7 +88,9 @@ export default function Editor({ id, navigate }) {
     });
 
   const total = useMemo(() => itemsTotal(data.phases), [data.phases]);
-  const fileName = fileNameFor(data.clientName);
+  const fileName = fileNameFor(data.clientName, data.docType);
+  const withTerms = data.docType !== 'invoice';
+  const currency = data.currency || 'INR';
 
   async function download() {
     setBusy(true);
@@ -123,9 +125,28 @@ export default function Editor({ id, navigate }) {
             >
               {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
-            <button type="button" className="ghost" onClick={() => setData({ ...defaultData, invoiceDate: data.invoiceDate })}>
+            <button type="button" className="ghost" onClick={() => setData({ ...sampleData(), invoiceDate: data.invoiceDate })}>
               Load sample
             </button>
+          </div>
+          <div className="doc-options">
+            <div className="segmented" role="radiogroup" aria-label="Document type">
+              {DOC_TYPES.map((t) => (
+                <button
+                  type="button"
+                  key={t.value}
+                  role="radio"
+                  aria-checked={(data.docType || 'tc-invoice') === t.value}
+                  className={(data.docType || 'tc-invoice') === t.value ? 'seg active' : 'seg'}
+                  onClick={() => setData((d) => ({ ...d, docType: t.value }))}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <select value={currency} onChange={set('currency')} aria-label="Currency">
+              {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+            </select>
           </div>
         </div>
 
@@ -158,31 +179,44 @@ export default function Editor({ id, navigate }) {
               <Field label="Description / deliverables" wide>
                 <textarea rows={2} value={p.deliverables} onChange={setItem(i, 'deliverables')} />
               </Field>
-              <Field label="Amount (₹)">
+              <Field label="Amount">
                 <input inputMode="numeric" value={p.amount} onChange={setItem(i, 'amount')} />
               </Field>
             </fieldset>
           ))}
           <button type="button" className="ghost wide add" onClick={addItem}>+ Add item</button>
-          <div className="total wide">Total <strong>{money(total) || '₹0'}</strong></div>
-          <Field label="Additional features / exclusions" hint="One per line — quoted separately" wide>
-            {area('exclusions', 3)}
-          </Field>
+          <div className="total wide">Total <strong>{money(total, currency) || money(0, currency)}</strong></div>
+          {withTerms && (
+            <Field label="Additional features / exclusions" hint="One per line — quoted separately" wide>
+              {area('exclusions', 3)}
+            </Field>
+          )}
         </Group>
 
+        {withTerms ? (
         <Group title="Terms & conditions" defaultOpen={false}>
           <Field label="Timeline (days)">{input('timelineDays', { inputMode: 'numeric' })}</Field>
           <Field label="Suspension (days after final payment due)">{input('suspensionDays', { inputMode: 'numeric' })}</Field>
           <Field label="Included minor reviews">{input('includedMinorReviews', { inputMode: 'numeric' })}</Field>
           <Field label="Included major reviews">{input('includedMajorReviews', { inputMode: 'numeric' })}</Field>
-          <Field label="Extra minor revision (₹)">{input('minorRevisionCharge', { inputMode: 'numeric' })}</Field>
-          <Field label="Extra major revision (₹)">{input('majorRevisionCharge', { inputMode: 'numeric' })}</Field>
-          <Field label="Annual domain & hosting renewal (₹)">{input('renewalCharge', { inputMode: 'numeric' })}</Field>
+          <Field label="Extra minor revision">{input('minorRevisionCharge', { inputMode: 'numeric' })}</Field>
+          <Field label="Extra major revision">{input('majorRevisionCharge', { inputMode: 'numeric' })}</Field>
+          <Field label="Annual domain & hosting renewal">{input('renewalCharge', { inputMode: 'numeric' })}</Field>
           <Field label="Payment terms" wide>{area('paymentTerms', 3)}</Field>
           <Field label="Additional notes" hint="Printed under Acceptance" wide>{area('additionalNotes', 2)}</Field>
         </Group>
+        ) : (
+        <Group title="Invoice notes" defaultOpen={false}>
+          <Field label="Payment terms" wide>{area('paymentTerms', 3)}</Field>
+          <Field label="Annual domain & hosting renewal" hint="Leave blank to hide">{input('renewalCharge', { inputMode: 'numeric' })}</Field>
+        </Group>
+        )}
 
         <Group title="Payment instructions" defaultOpen={false}>
+          <div className="wide group-note">
+            <span className="hint">Defaults come from Settings.</span>
+            <button type="button" className="ghost sm" onClick={() => setData((d) => ({ ...d, ...pick(getSettings(), BANK_KEYS) }))}>Use saved details</button>
+          </div>
           <Field label="Account name">{input('bankAccountName')}</Field>
           <Field label="Bank name">{input('bankName')}</Field>
           <Field label="Account number">{input('bankAccountNumber')}</Field>
@@ -192,6 +226,10 @@ export default function Editor({ id, navigate }) {
         </Group>
 
         <Group title="Provider (Round Logics)" defaultOpen={false}>
+          <div className="wide group-note">
+            <span className="hint">Defaults come from Settings.</span>
+            <button type="button" className="ghost sm" onClick={() => setData((d) => ({ ...d, ...pick(getSettings(), PROVIDER_KEYS) }))}>Use saved details</button>
+          </div>
           <Field label="Provider name">{input('providerName')}</Field>
           <Field label="Provider email">{input('providerEmail', { type: 'email' })}</Field>
           <Field label="Provider phone">{input('providerPhone')}</Field>

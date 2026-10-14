@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import Editor from './Editor.jsx';
 import Manage from './Manage.jsx';
+import Settings from './Settings.jsx';
 
-// Hash routes: #/invoices (list), #/new, #/edit/<id>
+// Hash routes: #/invoices (list), #/settings, #/new, #/edit/<id>
 const parse = (hash) => {
   const m = hash.match(/^#\/edit\/(.+)$/);
   if (m) return { page: 'edit', id: decodeURIComponent(m[1]) };
   if (hash === '#/invoices') return { page: 'manage' };
+  if (hash === '#/settings') return { page: 'settings' };
   return { page: 'new', key: hash };
 };
 
@@ -35,16 +37,20 @@ export default function App() {
           <h1>T&amp;C + Invoice Generator</h1>
         </div>
         <nav className="tabs">
-          <button className={route.page !== 'manage' ? 'tab active' : 'tab'} onClick={() => navigate('#/new')}>
+          <button className={route.page === 'new' || route.page === 'edit' ? 'tab active' : 'tab'} onClick={() => navigate('#/new')}>
             New invoice
           </button>
           <button className={route.page === 'manage' ? 'tab active' : 'tab'} onClick={() => navigate('#/invoices')}>
             Manage invoices
           </button>
+          <button className={route.page === 'settings' ? 'tab active' : 'tab'} onClick={() => navigate('#/settings')}>
+            Settings
+          </button>
         </nav>
       </header>
 
       {route.page === 'manage' && <Manage navigate={navigate} />}
+      {route.page === 'settings' && <Settings navigate={navigate} />}
       {route.page === 'edit' && <Editor key={route.id} id={route.id} navigate={navigate} />}
       {route.page === 'new' && <Editor key={`new-${newKey}`} navigate={navigate} />}
     </div>

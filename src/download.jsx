@@ -10,7 +10,7 @@ export async function downloadPdf(data) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = fileNameFor(data.clientName);
+  a.download = fileNameFor(data.clientName, data.docType);
   document.body.appendChild(a);
   a.click();
   a.remove();

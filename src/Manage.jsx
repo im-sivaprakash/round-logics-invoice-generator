@@ -5,6 +5,7 @@ import {
 import { downloadPdf, downloadText } from './download.jsx';
 import { money, formatDate } from './pdf/format.js';
 import { STATUSES } from './statuses.js';
+import { getSettings } from './settings.js';
 
 function useInvoices() {
   const [list, setList] = useState(listInvoices);
@@ -39,12 +40,22 @@ export default function Manage({ navigate }) {
     });
   }, [invoices, query, status]);
 
-  const sum = (pred) => invoices.filter(pred).reduce((s, r) => s + recordTotal(r), 0);
+  // Totals are kept per currency so ₹ and $ are never added together.
+  const baseCurrency = getSettings().currency;
+  const sum = (pred) => {
+    const by = {};
+    invoices.filter(pred).forEach((r) => {
+      const c = r.data?.currency || 'INR';
+      by[c] = (by[c] || 0) + recordTotal(r);
+    });
+    const parts = Object.entries(by).map(([c, v]) => money(v, c));
+    return parts.length ? parts.join(' · ') : money(0, baseCurrency);
+  };
   const stats = [
     ['Invoices', String(invoices.length)],
-    ['Total value', money(sum((r) => r.status !== 'cancelled')) || '₹0'],
-    ['Paid', money(sum((r) => r.status === 'paid')) || '₹0'],
-    ['Outstanding', money(sum((r) => r.status === 'sent' || r.status === 'draft')) || '₹0'],
+    ['Total value', sum((r) => r.status !== 'cancelled')],
+    ['Paid', sum((r) => r.status === 'paid')],
+    ['Outstanding', sum((r) => r.status === 'sent' || r.status === 'draft')],
   ];
 
   async function download(r) {
@@ -125,9 +136,12 @@ export default function Manage({ navigate }) {
                     <td data-label="Invoice">
                       <button className="link" onClick={() => navigate(`#/edit/${r.id}`)}>{d.invoiceNumber || 'No number'}</button>
                     </td>
-                    <td data-label="Client">{d.clientName || '—'}</td>
+                    <td data-label="Client">
+                      {d.clientName || '—'}
+                      <span className="type-tag">{d.docType === 'invoice' ? 'Invoice only' : 'T&C + Invoice'}</span>
+                    </td>
                     <td data-label="Date">{formatDate(d.invoiceDate) || '—'}</td>
-                    <td data-label="Total" className="num">{money(recordTotal(r)) || '₹0'}</td>
+                    <td data-label="Total" className="num">{money(recordTotal(r), d.currency || 'INR')}</td>
                     <td data-label="Status">
                       <select className={`pill ${r.status}`} value={r.status} onChange={(e) => setStatus(r.id, e.target.value)}>
                         {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
