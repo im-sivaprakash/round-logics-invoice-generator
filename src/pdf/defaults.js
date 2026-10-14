@@ -1,4 +1,4 @@
-import { getSettings, PROVIDER_KEYS, BANK_KEYS, TERMS_KEYS, pick } from '../settings.js';
+import { getSettings, SHARED_KEYS, TERMS_KEYS, pick } from '../settings.js';
 
 // Default form values. Pre-filled with the Venee Art Sculptures project brief.
 // Any field left blank is left out of the PDF.
@@ -64,10 +64,11 @@ export const defaultData = {
   docType: 'tc-invoice',
 };
 
-// A fresh invoice: provider, bank, currency and standard terms come from Settings.
+// A fresh invoice: currency and standard terms are copied from Settings.
+// Provider and bank fields stay blank so they always follow Settings (see resolveData).
 export const newInvoiceData = (settings = getSettings()) => ({
   ...Object.fromEntries(Object.keys(defaultData).map((k) => [k, ''])),
-  ...pick(settings, [...PROVIDER_KEYS, ...BANK_KEYS, ...TERMS_KEYS]),
+  ...pick(settings, TERMS_KEYS),
   currency: settings.currency,
   docType: settings.docType,
   invoiceNumber: settings.invoicePrefix || '',
@@ -78,7 +79,7 @@ export const newInvoiceData = (settings = getSettings()) => ({
 // The Venee Art Sculptures sample, using your saved provider, bank and currency settings.
 export const sampleData = (settings = getSettings()) => ({
   ...defaultData,
-  ...pick(settings, [...PROVIDER_KEYS, ...BANK_KEYS]),
+  ...Object.fromEntries(SHARED_KEYS.map((k) => [k, ''])),
   currency: settings.currency,
   docType: settings.docType,
 });

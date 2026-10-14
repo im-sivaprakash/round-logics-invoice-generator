@@ -8,7 +8,7 @@ A React (Vite) app that turns a short project form into one client-ready PDF:
 - Add, remove and reorder invoice items; they appear identically in the T&C and the invoice, and the total is calculated automatically.
 - Every invoice autosaves to the browser's localStorage. **Manage invoices** lists them with search, status (Draft / Sent / Paid / Cancelled), totals, edit, PDF download, duplicate, delete, and JSON backup / import.
 - **Invoice only** switch: skip the T&C pages and download just the invoice (`Round_Logics_<Client>_Invoice.pdf`).
-- **Settings** page: currency (₹, $, €, £, AED, S$, A$, C$), default document type, invoice-number prefix, provider details, payment details and default terms. New invoices start from these; existing invoices keep their own values.
+- **Settings** page (saves automatically): currency (₹, $, €, £, AED, S$, A$, C$), default document type, invoice-number prefix, provider details, payment details and default terms. Provider and bank details apply to every invoice unless overridden on that invoice; currency and terms pre-fill new invoices.
 - "Load sample" fills in the Venee Art Sculptures brief.
 - File name: `Round_Logics_<Client_Name>_T&C_Invoice.pdf`.
 

@@ -2,8 +2,9 @@ import { pdf } from '@react-pdf/renderer';
 import './pdf/browserFonts.js';
 import InvoiceDocument from './pdf/InvoiceDocument.jsx';
 import { fileNameFor } from './pdf/format.js';
+import { resolveData } from './settings.js';
 
-export const renderBlob = (data) => pdf(<InvoiceDocument data={data} />).toBlob();
+export const renderBlob = (data) => pdf(<InvoiceDocument data={resolveData(data)} />).toBlob();
 
 export async function downloadPdf(data) {
   const blob = await renderBlob(data);

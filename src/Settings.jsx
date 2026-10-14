@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CURRENCIES, DOC_TYPES, defaultSettings, getSettings, saveSettings } from './settings.js';
 import { money } from './pdf/format.js';
 
@@ -25,31 +25,27 @@ function Card({ title, note, children }) {
 export default function Settings({ navigate }) {
   const [form, setForm] = useState(getSettings);
   const [status, setStatus] = useState('');
-  const [dirty, setDirty] = useState(false);
+  const first = useRef(true);
+
+  // Saves automatically as you type
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    const t = setTimeout(() => {
+      setStatus(saveSettings(form) ? 'Saved' : 'Could not save — this browser’s storage is unavailable.');
+    }, 300);
+    return () => clearTimeout(t);
+  }, [form]);
 
   const set = (key) => (e) => {
     setForm((f) => ({ ...f, [key]: e.target.value }));
-    setDirty(true);
-    setStatus('');
+    setStatus('Saving…');
   };
   const input = (key, props = {}) => <input value={form[key] ?? ''} onChange={set(key)} {...props} />;
   const area = (key, rows = 2) => <textarea rows={rows} value={form[key] ?? ''} onChange={set(key)} />;
 
-  function save(e) {
-    e.preventDefault();
-    if (saveSettings(form)) {
-      setDirty(false);
-      setStatus('Settings saved. New invoices will use them.');
-    } else {
-      setStatus('Could not save — this browser’s storage is unavailable.');
-    }
-  }
-
   function reset() {
     if (!confirm('Reset all settings to the original defaults?')) return;
     setForm({ ...defaultSettings });
-    setDirty(true);
-    setStatus('Defaults restored — press Save to keep them.');
   }
 
   return (
@@ -57,7 +53,7 @@ export default function Settings({ navigate }) {
       <div className="manage-head">
         <div>
           <h2>Settings</h2>
-          <p className="hint">Saved in this browser. New invoices start with these details; existing invoices keep their own.</p>
+          <p className="hint">Saved automatically in this browser. Provider and bank details apply to every invoice (unless you override them on an invoice); currency and terms apply to new invoices.</p>
         </div>
         <div className="actions">
           <button className="ghost" onClick={reset}>Reset to defaults</button>
@@ -65,7 +61,7 @@ export default function Settings({ navigate }) {
         </div>
       </div>
 
-      <form onSubmit={save} className="settings-form">
+      <form onSubmit={(e) => e.preventDefault()} className="settings-form">
         <Card title="General">
           <Field label="Currency" hint={`Example: ${money(28000, form.currency)}`}>
             <select value={form.currency} onChange={set('currency')}>
@@ -80,14 +76,14 @@ export default function Settings({ navigate }) {
           <Field label="Invoice number prefix" hint="Optional, e.g. RL-2026-">{input('invoicePrefix')}</Field>
         </Card>
 
-        <Card title="Provider details" note="Printed in the “From” block of every new invoice.">
+        <Card title="Provider details" note="Printed in the “From” block of every invoice.">
           <Field label="Business name">{input('providerName')}</Field>
           <Field label="Email">{input('providerEmail', { type: 'email' })}</Field>
           <Field label="Phone">{input('providerPhone')}</Field>
           <Field label="Address" wide>{area('providerAddress', 3)}</Field>
         </Card>
 
-        <Card title="Payment details" note="Shown under Payment instructions. Leave blank to hide.">
+        <Card title="Payment details (bank)" note="Shown under Payment instructions on every invoice. Leave blank to hide.">
           <Field label="Account name">{input('bankAccountName')}</Field>
           <Field label="Bank name">{input('bankName')}</Field>
           <Field label="Account number">{input('bankAccountNumber')}</Field>
@@ -108,8 +104,8 @@ export default function Settings({ navigate }) {
         </Card>
 
         <div className="save-bar">
-          <span className="hint" role="status">{status || (dirty ? 'Unsaved changes' : '')}</span>
-          <button className="primary" type="submit" disabled={!dirty}>Save settings</button>
+          <span className="hint" role="status">{status || 'Changes save automatically'}</span>
+          <button className="primary" type="button" onClick={() => navigate('#/new')}>Done</button>
         </div>
       </form>
     </main>

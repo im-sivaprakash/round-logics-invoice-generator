@@ -74,3 +74,13 @@ export function saveSettings(settings) {
 }
 
 export const pick = (obj, keys) => Object.fromEntries(keys.map((k) => [k, obj[k] ?? '']));
+
+// Bank and provider details: an invoice's own value wins; blank fields fall back to Settings.
+export const SHARED_KEYS = [...PROVIDER_KEYS, ...BANK_KEYS];
+export function resolveData(data, settings = getSettings()) {
+  const out = { ...data };
+  for (const k of SHARED_KEYS) {
+    if (!String(out[k] ?? '').trim()) out[k] = settings[k] ?? '';
+  }
+  return out;
+}

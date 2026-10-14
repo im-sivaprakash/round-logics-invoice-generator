@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { renderBlob, downloadPdf } from './download.jsx';
 import { sampleData, newInvoiceData, emptyPhase } from './pdf/defaults.js';
-import { CURRENCIES, DOC_TYPES, BANK_KEYS, PROVIDER_KEYS, getSettings, pick } from './settings.js';
+import { CURRENCIES, DOC_TYPES, BANK_KEYS, PROVIDER_KEYS, getSettings } from './settings.js';
 import { fileNameFor, money, itemsTotal, has } from './pdf/format.js';
 import { getInvoice, makeRecord, saveInvoice } from './storage.js';
 import { STATUSES } from './statuses.js';
@@ -36,6 +36,16 @@ export default function Editor({ id, navigate }) {
   const [error, setError] = useState('');
   const missing = id && !getInvoice(id) && !saved;
   const data = record.data;
+  const [settings, setSettings] = useState(getSettings);
+  useEffect(() => {
+    const refresh = () => setSettings(getSettings());
+    window.addEventListener('settings-changed', refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener('settings-changed', refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, []);
 
   // Autosave to localStorage
   const saveTimer = useRef();
@@ -70,7 +80,7 @@ export default function Editor({ id, navigate }) {
       }
     }, 600);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [data]);
+  }, [data, settings]);
 
   const setData = (fn) => setRecord((r) => ({ ...r, data: typeof fn === 'function' ? fn(r.data) : fn }));
   const set = (key) => (e) => setData((d) => ({ ...d, [key]: e.target.value }));
@@ -97,8 +107,11 @@ export default function Editor({ id, navigate }) {
     try { await downloadPdf(data); } catch (e) { setError(String(e?.message || e)); } finally { setBusy(false); }
   }
 
-  const input = (key, props = {}) => <input value={data[key] ?? ''} onChange={set(key)} {...props} />;
-  const area = (key, rows = 3, props = {}) => <textarea rows={rows} value={data[key] ?? ''} onChange={set(key)} {...props} />;
+  const shared = new Set([...PROVIDER_KEYS, ...BANK_KEYS]);
+  // For provider/bank fields, show the Settings value as the placeholder
+  const ph = (key, props) => (shared.has(key) && has(settings[key]) ? { ...props, placeholder: settings[key] } : props);
+  const input = (key, props = {}) => <input value={data[key] ?? ''} onChange={set(key)} {...ph(key, props)} />;
+  const area = (key, rows = 3, props = {}) => <textarea rows={rows} value={data[key] ?? ''} onChange={set(key)} {...ph(key, props)} />;
 
   if (missing) {
     return (
@@ -212,10 +225,12 @@ export default function Editor({ id, navigate }) {
         </Group>
         )}
 
-        <Group title="Payment instructions" defaultOpen={false}>
+        <Group title="Payment instructions (bank details)" defaultOpen={false}>
           <div className="wide group-note">
-            <span className="hint">Defaults come from Settings.</span>
-            <button type="button" className="ghost sm" onClick={() => setData((d) => ({ ...d, ...pick(getSettings(), BANK_KEYS) }))}>Use saved details</button>
+            <span className="hint">Blank fields use your saved Settings. Type here only to change them for this invoice.</span>
+            {BANK_KEYS.some((k) => has(data[k])) && (
+              <button type="button" className="ghost sm" onClick={() => setData((d) => ({ ...d, ...Object.fromEntries(BANK_KEYS.map((k) => [k, ''])) }))}>Use Settings</button>
+            )}
           </div>
           <Field label="Account name">{input('bankAccountName')}</Field>
           <Field label="Bank name">{input('bankName')}</Field>
@@ -227,8 +242,10 @@ export default function Editor({ id, navigate }) {
 
         <Group title="Provider (Round Logics)" defaultOpen={false}>
           <div className="wide group-note">
-            <span className="hint">Defaults come from Settings.</span>
-            <button type="button" className="ghost sm" onClick={() => setData((d) => ({ ...d, ...pick(getSettings(), PROVIDER_KEYS) }))}>Use saved details</button>
+            <span className="hint">Blank fields use your saved Settings. Type here only to change them for this invoice.</span>
+            {PROVIDER_KEYS.some((k) => has(data[k])) && (
+              <button type="button" className="ghost sm" onClick={() => setData((d) => ({ ...d, ...Object.fromEntries(PROVIDER_KEYS.map((k) => [k, ''])) }))}>Use Settings</button>
+            )}
           </div>
           <Field label="Provider name">{input('providerName')}</Field>
           <Field label="Provider email">{input('providerEmail', { type: 'email' })}</Field>
