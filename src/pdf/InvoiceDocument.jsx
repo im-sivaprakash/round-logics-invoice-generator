@@ -87,7 +87,8 @@ const s = StyleSheet.create({
   paidBadge: { color: '#17733a', borderColor: '#17733a', backgroundColor: '#e7f6ec' },
   partBadge: { color: '#8a5a00', borderColor: '#b07a12', backgroundColor: '#fdf3dc' },
   paidText: { color: '#17733a', fontWeight: 700 },
-  dueText: { color: MUTED },
+  dueText: { color: '#a3261d', fontWeight: 600 },
+  payMeta: { fontSize: 7.6, color: MUTED, lineHeight: 1.35 },
 });
 
 function Logo({ width }) {
@@ -137,14 +138,14 @@ function Chrome({ label, client, header = true }) {
   );
 }
 
-function ItemTable({ items, total, money, showStatus }) {
+function ItemTable({ items, total, money, showStatus, dueOn }) {
   const showTotal = has(total);
   return (
     <View style={s.table}>
       <View style={s.tr}>
         <Text style={[s.th, { width: 30 }]}>#</Text>
         <Text style={[s.th, { flex: 1 }]}>Description</Text>
-        {showStatus && <Text style={[s.th, { width: 52 }]}>Status</Text>}
+        {showStatus && <Text style={[s.th, { width: 104 }]}>Status</Text>}
         <Text style={[s.th, s.right, { width: 90 }]}>Amount</Text>
       </View>
       {items.map((it, i) => (
@@ -155,9 +156,16 @@ function ItemTable({ items, total, money, showStatus }) {
             {has(it.deliverables) && <Text style={{ color: MUTED }}>{clean(it.deliverables)}</Text>}
           </View>
           {showStatus && (
-            <Text style={[s.td, { width: 52 }, it.paid ? s.paidText : s.dueText]}>
-              {has(it.amount) ? (it.paid ? 'Paid' : 'Due') : ''}
-            </Text>
+            <View style={[s.td, { width: 104 }]}>
+              {has(it.amount) && (
+                <>
+                  <Text style={it.paid ? s.paidText : s.dueText}>{it.paid ? 'Paid' : 'Due'}</Text>
+                  {it.paid && has(it.paidMethod) && <Text style={s.payMeta}>{clean(it.paidMethod)}</Text>}
+                  {it.paid && has(it.paidDate) && <Text style={s.payMeta}>{shortDate(it.paidDate)}</Text>}
+                  {!it.paid && has(dueOn) && <Text style={s.payMeta}>by {shortDate(dueOn)}</Text>}
+                </>
+              )}
+            </View>
           )}
           <Text style={[s.td, s.right, { width: 90, fontWeight: 600 }]}>{money(it.amount)}</Text>
         </View>
@@ -449,7 +457,7 @@ export default function InvoiceDocument({ data }) {
             Project: Website design and development · Pages: {pages.join(', ')}
           </Text>
         )}
-        {items.length > 0 && <ItemTable items={items} money={money} showStatus={showPay} />}
+        {items.length > 0 && <ItemTable items={items} money={money} showStatus={showPay} dueOn={d.dueDate} />}
 
         {anyAmount && (
           <View style={s.totalsWrap}>
