@@ -3,7 +3,7 @@ import { getSettings, SHARED_KEYS, TERMS_KEYS, pick } from '../settings.js';
 // Default form values. Pre-filled with the Venee Art Sculptures project brief.
 // Any field left blank is left out of the PDF.
 
-export const emptyPhase = () => ({ title: '', deliverables: '', amount: '', paid: false, paidMethod: '', paidDate: '', paidRef: '' });
+export const emptyPhase = () => ({ title: '', deliverables: '', qty: '1', rate: '', amount: '', paid: false, paidMethod: '', paidDate: '', paidRef: '' });
 
 export const defaultData = {
   // Provider

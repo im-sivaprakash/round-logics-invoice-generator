@@ -4,7 +4,7 @@ import { LOGO_PATHS, LOGO_VIEWBOX, LOGO_FILL } from './logo.js';
 import { FONT_STACK } from './fonts.js';
 import { kindLabel, kindShort, isOffer, tracksPayment, paymentSummary } from './docKinds.js';
 import {
-  has, clean, money as formatMoney, toNumber, formatDate, splitList, splitLines, countWord, activeItems, itemTitle, itemShort,
+  has, clean, money as formatMoney, toNumber, usesQty, formatQty, itemRate, formatDate, splitList, splitLines, countWord, activeItems, itemTitle, itemShort,
 } from './format.js';
 
 const INK = '#0c0c0c';
@@ -140,13 +140,16 @@ function Chrome({ label, client, header = true }) {
 
 function ItemTable({ items, total, money, showStatus, dueOn }) {
   const showTotal = has(total);
+  const qtyCols = usesQty(items);
   return (
     <View style={s.table}>
       <View style={s.tr}>
         <Text style={[s.th, { width: 30 }]}>#</Text>
         <Text style={[s.th, { flex: 1 }]}>Description</Text>
-        {showStatus && <Text style={[s.th, { width: 104 }]}>Status</Text>}
-        <Text style={[s.th, s.right, { width: 90 }]}>Amount</Text>
+        {qtyCols && <Text style={[s.th, s.right, { width: 38 }]}>Qty</Text>}
+        {qtyCols && <Text style={[s.th, s.right, { width: 72 }]}>Unit price</Text>}
+        {showStatus && <Text style={[s.th, { width: 98 }]}>Status</Text>}
+        <Text style={[s.th, s.right, { width: 84 }]}>Amount</Text>
       </View>
       {items.map((it, i) => (
         <View key={i} style={i === items.length - 1 && !showTotal ? s.trLast : s.tr} wrap={false}>
@@ -155,8 +158,10 @@ function ItemTable({ items, total, money, showStatus, dueOn }) {
             {has(it.title) && <Text style={s.strong}>{clean(it.title)}</Text>}
             {has(it.deliverables) && <Text style={{ color: MUTED }}>{clean(it.deliverables)}</Text>}
           </View>
+          {qtyCols && <Text style={[s.td, s.right, { width: 38 }]}>{has(it.amount) ? formatQty(it) : ''}</Text>}
+          {qtyCols && <Text style={[s.td, s.right, { width: 72 }]}>{money(itemRate(it))}</Text>}
           {showStatus && (
-            <View style={[s.td, { width: 104 }]}>
+            <View style={[s.td, { width: 98 }]}>
               {has(it.amount) && (
                 <>
                   <Text style={it.paid ? s.paidText : s.dueText}>{it.paid ? 'Paid' : 'Due'}</Text>
@@ -167,13 +172,13 @@ function ItemTable({ items, total, money, showStatus, dueOn }) {
               )}
             </View>
           )}
-          <Text style={[s.td, s.right, { width: 90, fontWeight: 600 }]}>{money(it.amount)}</Text>
+          <Text style={[s.td, s.right, { width: 84, fontWeight: 600 }]}>{money(it.amount)}</Text>
         </View>
       ))}
       {showTotal && (
         <View style={s.trLast} wrap={false}>
           <Text style={[s.td, { flex: 1, fontWeight: 700 }]}>Total project value</Text>
-          <Text style={[s.td, s.right, { width: 90, fontWeight: 700 }]}>{money(total)}</Text>
+          <Text style={[s.td, s.right, { width: 84, fontWeight: 700 }]}>{money(total)}</Text>
         </View>
       )}
     </View>

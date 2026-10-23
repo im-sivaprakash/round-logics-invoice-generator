@@ -45,6 +45,19 @@ export const itemShort = (it, i) => {
   return head.length <= 24 ? head : `Item ${i + 1}`;
 };
 
+// Quantity: blank means 1. Unit price: falls back to the amount for items made before quantities existed.
+export const itemQty = (it) => (has(it?.qty) ? toNumber(it.qty) : 1);
+export const itemRate = (it) => (has(it?.rate) ? it.rate : it?.amount ?? '');
+const round2 = (n) => Math.round(n * 100) / 100;
+export const lineAmount = (qty, rate) => {
+  if (!has(rate)) return '';
+  return String(round2((has(qty) ? toNumber(qty) : 1) * toNumber(rate)));
+};
+// Show Qty / Unit price columns only when some item has a quantity other than 1
+export const usesQty = (items) => (items || []).some((it) => has(it.qty) && toNumber(it.qty) !== 1);
+const qtyFmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+export const formatQty = (it) => qtyFmt.format(itemQty(it));
+
 export const itemsTotal = (items) => (items || []).reduce((s, it) => s + toNumber(it.amount), 0);
 
 const slug = (v) => String(v || '').trim().replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');

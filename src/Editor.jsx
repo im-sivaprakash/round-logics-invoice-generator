@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { renderBlob, downloadPdf } from './download.jsx';
 import { sampleData, newInvoiceData, emptyPhase } from './pdf/defaults.js';
 import { CURRENCIES, DOC_TYPES, BANK_KEYS, PROVIDER_KEYS, getSettings } from './settings.js';
-import { fileNameFor, money, itemsTotal, has } from './pdf/format.js';
+import { fileNameFor, money, itemsTotal, has, itemRate, lineAmount } from './pdf/format.js';
 import { getInvoice, makeRecord, saveInvoice, syncPaidStatus, markItemsPaid, markItemsUnpaid } from './storage.js';
 import { DOC_KINDS, PAYMENT_METHODS, kindLabel, kindShort, isOffer, tracksPayment, paymentSummary, PAY_STATE_LABEL } from './pdf/docKinds.js';
 import PaymentDialog from './PaymentDialog.jsx';
@@ -89,6 +89,16 @@ export default function Editor({ id, navigate }) {
   const set = (key) => (e) => setData((d) => ({ ...d, [key]: e.target.value }));
   const setItem = (i, key) => (e) =>
     setData((d) => ({ ...d, phases: d.phases.map((p, j) => (j === i ? { ...p, [key]: e.target.value } : p)) }));
+  // Quantity or unit price changed: amount = quantity × unit price
+  const setQtyRate = (i, key) => (e) =>
+    setData((d) => ({
+      ...d,
+      phases: d.phases.map((p, j) => {
+        if (j !== i) return p;
+        const next = { ...p, rate: itemRate(p), [key]: e.target.value };
+        return { ...next, amount: lineAmount(next.qty, next.rate) };
+      }),
+    }));
   const addItem = () => setData((d) => ({ ...d, phases: [...(d.phases || []), emptyPhase()] }));
   const removeItem = (i) => setData((d) => ({ ...d, phases: d.phases.filter((_, j) => j !== i) }));
   const moveItem = (i, dir) =>
@@ -231,9 +241,17 @@ export default function Editor({ id, navigate }) {
               <Field label="Description / deliverables" wide>
                 <textarea rows={2} value={p.deliverables} onChange={setItem(i, 'deliverables')} />
               </Field>
-              <Field label="Amount">
-                <input inputMode="numeric" value={p.amount} onChange={setItem(i, 'amount')} />
-              </Field>
+              <div className="qty-row wide">
+                <Field label="Quantity">
+                  <input inputMode="decimal" value={p.qty ?? '1'} onChange={setQtyRate(i, 'qty')} placeholder="1" />
+                </Field>
+                <Field label="Unit price">
+                  <input inputMode="decimal" value={itemRate(p)} onChange={setQtyRate(i, 'rate')} />
+                </Field>
+                <Field label="Amount">
+                  <output className="amount-out">{money(p.amount, currency) || '—'}</output>
+                </Field>
+              </div>
               {tracks && (
                 <div className={`item-pay${p.paid ? ' is-paid' : ''}`}>
                   <label className="check">

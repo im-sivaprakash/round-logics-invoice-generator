@@ -199,3 +199,11 @@ select {
   .inv-table td .kind-tag { display: inline; margin-left: 6px; }
 }
 .kind-field select, .kind-field input { flex: none; height: auto; width: 100%; }
+
+/* ---- quantity ---- */
+.qty-row { display: grid; grid-template-columns: 0.7fr 1fr 1fr; gap: 10px; }
+.amount-out {
+  display: flex; align-items: center; min-height: 37px; padding: 8px 10px; border-radius: 8px;
+  background: var(--bg); font-weight: 700; font-variant-numeric: tabular-nums;
+}
+@media (max-width: 900px) { .qty-row { grid-template-columns: 1fr 1fr; } .qty-row .field:last-child { grid-column: 1 / -1; } }
