@@ -169,3 +169,32 @@ select {
   .inv-table td .type-tag { display: inline; margin: 0 0 0 6px; }
   .doc-options select { flex: 1; }
 }
+
+/* ---- document kind + payments ---- */
+.kind-field { flex: 1; min-width: 180px; }
+.item-pay { display: flex; align-items: flex-end; }
+.check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; cursor: pointer; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.check input { width: 16px; height: 16px; accent-color: #17733a; }
+.item-pay.is-paid .check { border-color: #bfe5cb; background: #e7f6ec; color: #17733a; }
+.pay-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: #f6fbf7; border: 1px solid #d6eedd; border-radius: 8px; padding: 10px; }
+.pay-summary { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+.pay-summary > div:first-child { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pay-actions { display: flex; gap: 6px; }
+.pay-state { display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: #f1f2f4; color: var(--ink); white-space: nowrap; }
+.pay-state.paid { background: #e7f6ec; color: #17733a; }
+.pay-state.partial { background: #fdf3dc; color: #8a5a00; }
+.pay-state.unpaid { background: #fbeceb; color: #a3261d; }
+.pay-state small { font-weight: 600; }
+.kind-tag { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.kind-tag.offer { color: #1d4ed8; }
+.pay-btn { border-color: #bfe5cb; color: #17733a; }
+.pay-dialog { border: 1px solid var(--line); border-radius: 14px; padding: 0; width: min(420px, calc(100vw - 32px)); box-shadow: 0 20px 50px rgb(0 0 0 / 0.2); }
+.pay-dialog::backdrop { background: rgb(0 0 0 / 0.35); }
+.pay-dialog form { display: flex; flex-direction: column; gap: 12px; padding: 20px; }
+.pay-dialog h3 { margin: 0; font-size: 17px; }
+.pay-dialog .hint { margin: -6px 0 0; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+@media (max-width: 900px) {
+  .pay-fields { grid-template-columns: 1fr; }
+  .inv-table td .kind-tag { display: inline; margin-left: 6px; }
+}

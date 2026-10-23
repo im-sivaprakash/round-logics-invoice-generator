@@ -47,10 +47,12 @@ export const itemShort = (it, i) => {
 
 export const itemsTotal = (items) => (items || []).reduce((s, it) => s + toNumber(it.amount), 0);
 
-export const fileNameFor = (client, docType = 'tc-invoice') => {
-  const safe = String(client || '').trim().replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-  const kind = docType === 'invoice' ? 'Invoice' : 'T&C_Invoice';
-  return ['Round_Logics', safe, kind].filter(Boolean).join('_') + '.pdf';
+const slug = (v) => String(v || '').trim().replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+
+// Round_Logics_<Client>_T&C_Invoice.pdf / _Quotation.pdf / _Proforma_Invoice.pdf …
+export const fileNameFor = (client, docType = 'tc-invoice', label = 'Invoice') => {
+  const kind = (docType === 'invoice' ? '' : 'T&C_') + (slug(label) || 'Invoice');
+  return ['Round_Logics', slug(client), kind].filter(Boolean).join('_') + '.pdf';
 };
 
 export const countWord = (n) => {

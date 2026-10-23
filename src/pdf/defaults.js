@@ -3,7 +3,7 @@ import { getSettings, SHARED_KEYS, TERMS_KEYS, pick } from '../settings.js';
 // Default form values. Pre-filled with the Venee Art Sculptures project brief.
 // Any field left blank is left out of the PDF.
 
-export const emptyPhase = () => ({ title: '', deliverables: '', amount: '' });
+export const emptyPhase = () => ({ title: '', deliverables: '', amount: '', paid: false, paidMethod: '', paidDate: '', paidRef: '' });
 
 export const defaultData = {
   // Provider
@@ -62,6 +62,8 @@ export const defaultData = {
 
   currency: 'INR',
   docType: 'tc-invoice',
+  docKind: 'invoice',
+  docKindCustom: '',
 };
 
 // A fresh invoice: currency and standard terms are copied from Settings.
@@ -71,6 +73,7 @@ export const newInvoiceData = (settings = getSettings()) => ({
   ...pick(settings, TERMS_KEYS),
   currency: settings.currency,
   docType: settings.docType,
+  docKind: 'invoice',
   invoiceNumber: settings.invoicePrefix || '',
   invoiceDate: new Date().toLocaleDateString('en-CA'), // local YYYY-MM-DD
   phases: [emptyPhase()],

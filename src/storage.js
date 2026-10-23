@@ -60,7 +60,7 @@ export function deleteInvoice(id) {
 export function duplicateInvoice(id) {
   const src = getInvoice(id);
   if (!src) return null;
-  const rec = makeRecord({ ...structuredClone(src.data), invoiceNumber: '' });
+  const rec = makeRecord(markItemsUnpaid({ ...structuredClone(src.data), invoiceNumber: '' }));
   saveInvoice(rec);
   return rec;
 }
@@ -86,4 +86,39 @@ export function importAll(text) {
   write([...byId.values()]);
   if (parsed.settings && typeof parsed.settings === 'object') saveSettings({ ...getSettings(), ...parsed.settings });
   return incoming.length;
+}
+
+const allItemsPaid = (data) => {
+  const items = (data?.phases || []).filter((it) => String(it.amount ?? '').trim() !== '');
+  return items.length > 0 && items.every((it) => it.paid === true);
+};
+
+// Keeps the record status in step with item payments: everything paid → "Paid";
+// un-ticking a payment on a fully paid invoice moves it back to "Sent".
+export function syncPaidStatus(record, prevData) {
+  const nowAll = allItemsPaid(record.data);
+  if (nowAll && record.status !== 'paid') return { ...record, status: 'paid' };
+  if (!nowAll && record.status === 'paid' && (allItemsPaid(prevData) || (prevData?.phases || []).some((it) => it.paid))) {
+    return { ...record, status: 'sent' };
+  }
+  return record;
+}
+
+// Marks every unpaid item (that has an amount) as paid with the given method/date/reference.
+export const markItemsPaid = (data, info) => ({
+  ...data,
+  phases: (data.phases || []).map((it) =>
+    String(it.amount ?? '').trim() !== '' && !it.paid ? { ...it, paid: true, ...info } : it,
+  ),
+});
+
+export const markItemsUnpaid = (data) => ({
+  ...data,
+  phases: (data.phases || []).map((it) => ({ ...it, paid: false, paidMethod: '', paidDate: '', paidRef: '' })),
+});
+
+export function markInvoicePaid(id, info) {
+  const rec = getInvoice(id);
+  if (!rec) return;
+  saveInvoice(syncPaidStatus({ ...rec, data: markItemsPaid(rec.data, info) }, rec.data));
 }

@@ -3,15 +3,18 @@ import './pdf/browserFonts.js';
 import InvoiceDocument from './pdf/InvoiceDocument.jsx';
 import { fileNameFor } from './pdf/format.js';
 import { resolveData } from './settings.js';
+import { kindLabel } from './pdf/docKinds.js';
 
-export const renderBlob = (data) => pdf(<InvoiceDocument data={resolveData(data)} />).toBlob();
+// recordStatus lets old invoices marked "Paid" (before item-level tracking) still print as paid
+export const renderBlob = (data, recordStatus) =>
+  pdf(<InvoiceDocument data={{ ...resolveData(data), recordStatus }} />).toBlob();
 
-export async function downloadPdf(data) {
-  const blob = await renderBlob(data);
+export async function downloadPdf(data, recordStatus) {
+  const blob = await renderBlob(data, recordStatus);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = fileNameFor(data.clientName, data.docType);
+  a.download = fileNameFor(data.clientName, data.docType, kindLabel(data));
   document.body.appendChild(a);
   a.click();
   a.remove();

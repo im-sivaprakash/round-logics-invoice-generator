@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  listInvoices, deleteInvoice, duplicateInvoice, setStatus, recordTotal, exportAll, importAll,
+  listInvoices, deleteInvoice, duplicateInvoice, setStatus, recordTotal, exportAll, importAll, markInvoicePaid,
 } from './storage.js';
+import { DOC_KINDS, kindLabel, isOffer, tracksPayment, paymentSummary, PAY_STATE_LABEL } from './pdf/docKinds.js';
+import PaymentDialog from './PaymentDialog.jsx';
 import { downloadPdf, downloadText } from './download.jsx';
 import { money, formatDate } from './pdf/format.js';
 import { STATUSES } from './statuses.js';
@@ -25,6 +27,8 @@ export default function Manage({ navigate }) {
   const invoices = useInvoices();
   const [query, setQuery] = useState('');
   const [status, setStatusFilter] = useState('all');
+  const [kind, setKind] = useState('all');
+  const [payFor, setPayFor] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [msg, setMsg] = useState('');
   const fileRef = useRef();
@@ -33,34 +37,38 @@ export default function Manage({ navigate }) {
     const q = query.trim().toLowerCase();
     return invoices.filter((r) => {
       if (status !== 'all' && r.status !== status) return false;
+      if (kind !== 'all' && (r.data?.docKind || 'invoice') !== kind) return false;
       if (!q) return true;
       const d = r.data || {};
-      return [d.clientName, d.invoiceNumber, ...(d.phases || []).map((p) => p.title)]
+      return [d.clientName, d.invoiceNumber, kindLabel(d), ...(d.phases || []).map((p) => p.title)]
         .some((v) => String(v || '').toLowerCase().includes(q));
     });
-  }, [invoices, query, status]);
+  }, [invoices, query, status, kind]);
 
   // Totals are kept per currency so ₹ and $ are never added together.
   const baseCurrency = getSettings().currency;
-  const sum = (pred) => {
+  const sum = (pred, pick = recordTotal) => {
     const by = {};
     invoices.filter(pred).forEach((r) => {
       const c = r.data?.currency || 'INR';
-      by[c] = (by[c] || 0) + recordTotal(r);
+      by[c] = (by[c] || 0) + pick(r);
     });
     const parts = Object.entries(by).map(([c, v]) => money(v, c));
     return parts.length ? parts.join(' · ') : money(0, baseCurrency);
   };
+  const live = (r) => r.status !== 'cancelled';
+  const billable = (r) => live(r) && tracksPayment(r.data);
+  const offers = invoices.filter((r) => live(r) && isOffer(r.data));
   const stats = [
-    ['Invoices', String(invoices.length)],
-    ['Total value', sum((r) => r.status !== 'cancelled')],
-    ['Paid', sum((r) => r.status === 'paid')],
-    ['Outstanding', sum((r) => r.status === 'sent' || r.status === 'draft')],
+    ['Invoiced', sum(billable)],
+    ['Received', sum(billable, (r) => paymentSummary(r.data, r.status).paid)],
+    ['Outstanding', sum(billable, (r) => paymentSummary(r.data, r.status).balance)],
+    [`Open quotes (${offers.length})`, sum((r) => live(r) && isOffer(r.data))],
   ];
 
   async function download(r) {
     setBusyId(r.id);
-    try { await downloadPdf(r.data); } finally { setBusyId(null); }
+    try { await downloadPdf(r.data, r.status); } finally { setBusyId(null); }
   }
 
   function remove(r) {
@@ -88,7 +96,7 @@ export default function Manage({ navigate }) {
     <main className="manage">
       <div className="manage-head">
         <div>
-          <h2>Manage invoices</h2>
+          <h2>Manage invoices & quotes</h2>
           <p className="hint">Saved in this browser only. Use Backup to keep a copy or move them to another device.</p>
         </div>
         <div className="actions">
@@ -109,6 +117,10 @@ export default function Manage({ navigate }) {
 
       <div className="filters">
         <input type="search" placeholder="Search client, invoice no. or item" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Filter by type">
+          <option value="all">All types</option>
+          {DOC_KINDS.map((k) => <option key={k.value} value={k.value}>{k.value === 'custom' ? 'Other' : k.label}</option>)}
+        </select>
         <select value={status} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Filter by status">
           <option value="all">All statuses</option>
           {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
@@ -125,30 +137,43 @@ export default function Manage({ navigate }) {
           <table className="inv-table">
             <thead>
               <tr>
-                <th>Invoice</th><th>Client</th><th>Date</th><th className="num">Total</th><th>Status</th><th>Updated</th><th />
+                <th>Number</th><th>Client</th><th>Date</th><th className="num">Total</th><th>Payment</th><th>Status</th><th />
               </tr>
             </thead>
             <tbody>
               {shown.map((r) => {
                 const d = r.data || {};
+                const pay = paymentSummary(d, r.status);
+                const tracks = tracksPayment(d);
                 return (
                   <tr key={r.id}>
-                    <td data-label="Invoice">
+                    <td data-label="Number">
                       <button className="link" onClick={() => navigate(`#/edit/${r.id}`)}>{d.invoiceNumber || 'No number'}</button>
+                      <span className={`kind-tag ${isOffer(d) ? 'offer' : ''}`}>{kindLabel(d)}</span>
                     </td>
                     <td data-label="Client">
                       {d.clientName || '—'}
-                      <span className="type-tag">{d.docType === 'invoice' ? 'Invoice only' : 'T&C + Invoice'}</span>
+                      <span className="type-tag">{d.docType === 'invoice' ? 'Without T&C' : 'With T&C'}</span>
                     </td>
                     <td data-label="Date">{formatDate(d.invoiceDate) || '—'}</td>
                     <td data-label="Total" className="num">{money(recordTotal(r), d.currency || 'INR')}</td>
+                    <td data-label="Payment">
+                      {tracks ? (
+                        <span className={`pay-state ${pay.state}`} title={`Paid ${money(pay.paid, d.currency || 'INR')} · Balance ${money(pay.balance, d.currency || 'INR')}`}>
+                          {PAY_STATE_LABEL[pay.state]}
+                          {pay.state === 'partial' && <small> · {money(pay.balance, d.currency || 'INR')} due</small>}
+                        </span>
+                      ) : <span className="muted">—</span>}
+                    </td>
                     <td data-label="Status">
                       <select className={`pill ${r.status}`} value={r.status} onChange={(e) => setStatus(r.id, e.target.value)}>
                         {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                       </select>
                     </td>
-                    <td data-label="Updated" className="muted">{new Date(r.updatedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</td>
                     <td className="row-actions">
+                      {tracks && pay.state !== 'paid' && pay.total > 0 && (
+                        <button className="ghost sm pay-btn" onClick={() => setPayFor(r)}>Mark paid</button>
+                      )}
                       <button className="ghost sm" onClick={() => navigate(`#/edit/${r.id}`)}>Edit</button>
                       <button className="ghost sm" onClick={() => download(r)} disabled={busyId === r.id}>{busyId === r.id ? '…' : 'PDF'}</button>
                       <button className="ghost sm" onClick={() => { const c = duplicateInvoice(r.id); if (c) navigate(`#/edit/${c.id}`); }}>Duplicate</button>
@@ -161,6 +186,14 @@ export default function Manage({ navigate }) {
           </table>
         </div>
       )}
+
+      <PaymentDialog
+        open={!!payFor}
+        title={`Mark ${payFor?.data?.invoiceNumber || payFor?.data?.clientName || 'invoice'} as paid`}
+        amountText={payFor ? `Balance ${money(paymentSummary(payFor.data, payFor.status).balance, payFor.data?.currency || 'INR')} — all unpaid items will be marked paid` : ''}
+        onConfirm={(info) => { markInvoicePaid(payFor.id, info); setPayFor(null); }}
+        onClose={() => setPayFor(null)}
+      />
     </main>
   );
 }

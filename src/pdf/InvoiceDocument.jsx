@@ -2,6 +2,7 @@ import React from 'react';
 import { Document, Page, View, Text, Svg, Path, StyleSheet } from '@react-pdf/renderer';
 import { LOGO_PATHS, LOGO_VIEWBOX, LOGO_FILL } from './logo.js';
 import { FONT_STACK } from './fonts.js';
+import { kindLabel, kindShort, isOffer, tracksPayment, paymentSummary } from './docKinds.js';
 import {
   has, clean, money as formatMoney, toNumber, formatDate, splitList, splitLines, countWord, activeItems, itemTitle, itemShort,
 } from './format.js';
@@ -79,6 +80,14 @@ const s = StyleSheet.create({
   kvKey: { width: 100, color: MUTED },
   kvVal: { flex: 1, fontWeight: 600 },
   small: { fontSize: 8, color: MUTED },
+  badge: {
+    alignSelf: 'flex-end', fontSize: 8, fontWeight: 700, letterSpacing: 1, paddingVertical: 3, paddingHorizontal: 8,
+    borderRadius: 3, borderWidth: 1, marginBottom: 6,
+  },
+  paidBadge: { color: '#17733a', borderColor: '#17733a', backgroundColor: '#e7f6ec' },
+  partBadge: { color: '#8a5a00', borderColor: '#b07a12', backgroundColor: '#fdf3dc' },
+  paidText: { color: '#17733a', fontWeight: 700 },
+  dueText: { color: MUTED },
 });
 
 function Logo({ width }) {
@@ -128,13 +137,14 @@ function Chrome({ label, client, header = true }) {
   );
 }
 
-function ItemTable({ items, total, money }) {
+function ItemTable({ items, total, money, showStatus }) {
   const showTotal = has(total);
   return (
     <View style={s.table}>
       <View style={s.tr}>
         <Text style={[s.th, { width: 30 }]}>#</Text>
         <Text style={[s.th, { flex: 1 }]}>Description</Text>
+        {showStatus && <Text style={[s.th, { width: 52 }]}>Status</Text>}
         <Text style={[s.th, s.right, { width: 90 }]}>Amount</Text>
       </View>
       {items.map((it, i) => (
@@ -144,6 +154,11 @@ function ItemTable({ items, total, money }) {
             {has(it.title) && <Text style={s.strong}>{clean(it.title)}</Text>}
             {has(it.deliverables) && <Text style={{ color: MUTED }}>{clean(it.deliverables)}</Text>}
           </View>
+          {showStatus && (
+            <Text style={[s.td, { width: 52 }, it.paid ? s.paidText : s.dueText]}>
+              {has(it.amount) ? (it.paid ? 'Paid' : 'Due') : ''}
+            </Text>
+          )}
           <Text style={[s.td, s.right, { width: 90, fontWeight: 600 }]}>{money(it.amount)}</Text>
         </View>
       ))}
@@ -156,6 +171,12 @@ function ItemTable({ items, total, money }) {
     </View>
   );
 }
+
+const shortDate = (iso) => {
+  if (!has(iso)) return '';
+  const dt = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(dt.getTime()) ? String(iso) : dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+};
 
 function KV({ k, v }) {
   if (!has(v)) return null;
@@ -182,6 +203,13 @@ export default function InvoiceDocument({ data }) {
   const d = data;
   const money = (v) => formatMoney(v, d.currency || 'INR');
   const withTerms = d.docType !== 'invoice';
+  const label = kindLabel(d);            // "Invoice", "Quotation", "Receipt"…
+  const short = kindShort(d);            // "Invoice", "Quote"…
+  const docWord = label.toLowerCase();
+  const offer = isOffer(d);
+  const tracks = tracksPayment(d);
+  const pay = paymentSummary(d, d.recordStatus);
+  const showPay = tracks && pay.paid > 0;
   const client = clean(d.clientName);
   const provider = clean(d.providerName) || 'Round Logics';
   const pages = splitList(d.pages);
@@ -213,7 +241,7 @@ export default function InvoiceDocument({ data }) {
 
   return (
     <Document
-      title={['Round Logics', client, withTerms ? 'Terms & Conditions and Invoice' : 'Invoice'].filter(Boolean).join(' – ')}
+      title={['Round Logics', client, withTerms ? `Terms & Conditions and ${label}` : label].filter(Boolean).join(' – ')}
       author="Round Logics"
       subject="Website project Terms & Conditions and Invoice"
     >
@@ -234,7 +262,7 @@ export default function InvoiceDocument({ data }) {
 
         <Section n={(sec.agreement = next())} title="Agreement">
           <P>
-            These Terms & Conditions ("Terms") govern the website design and development services provided by {provider} ("Round Logics", "we") to {client ? `${client} ("the Client")` : 'the Client'}. The Terms apply together with the invoice that follows. By approving the project, making any payment or providing content for the work, the Client accepts these Terms.
+            These Terms & Conditions ("Terms") govern the website design and development services provided by {provider} ("Round Logics", "we") to {client ? `${client} ("the Client")` : 'the Client'}. The Terms apply together with the {docWord} that follows. By approving the project, making any payment or providing content for the work, the Client accepts these Terms.
           </P>
         </Section>
 
@@ -244,7 +272,7 @@ export default function InvoiceDocument({ data }) {
           )}
           {items.length > 0 && (
             <>
-              <P>{items.length > 1 ? 'The work is delivered in the following phases. Each phase is billed separately, as shown on the invoice.' : 'The work covered by this project:'}</P>
+              <P>{items.length > 1 ? `The work is delivered in the following phases. Each phase is billed separately, as shown on the ${docWord}.` : 'The work covered by this project:'}</P>
               <ItemTable items={items} total={items.length > 1 ? total : ''} money={money} />
             </>
           )}
@@ -302,8 +330,8 @@ export default function InvoiceDocument({ data }) {
             items={[
               ...items
                 .filter((it) => has(it.amount))
-                .map((it, i) => `${itemTitle(it, i)}: ${money(it.amount)}, billed as a separate line item on the invoice.`),
-              bank.length > 0 && 'Payments are made using the payment details provided on the invoice.',
+                .map((it, i) => `${itemTitle(it, i)}: ${money(it.amount)}, billed as a separate line item on the ${docWord}.`),
+              bank.length > 0 && `Payments are made using the payment details provided on the ${docWord}.`,
             ]}
           />
         </Section>
@@ -377,17 +405,21 @@ export default function InvoiceDocument({ data }) {
       )}
 
       {/* ---------------- INVOICE (always its own page) ---------------- */}
-      <Page size="A4" style={[s.page, { paddingTop: 44 }]}>
-        <Chrome label="Invoice" client={client} header={false} />
+      <Page size="A4" style={[s.page, { paddingTop: 44, paddingBottom: 70 }]}>
+        <Chrome label={label} client={client} header={false} />
 
         <View style={s.invTop}>
           <Logo width={150} />
           <View style={s.invMeta}>
-            <Text style={s.invTitle}>INVOICE</Text>
+            <Text style={[s.invTitle, label.length > 10 && { fontSize: label.length > 16 ? 15 : 19, letterSpacing: 1 }]}>
+              {label.toUpperCase()}
+            </Text>
+            {tracks && pay.state === 'paid' && <Text style={[s.badge, s.paidBadge]}>PAID</Text>}
+            {tracks && pay.state === 'partial' && <Text style={[s.badge, s.partBadge]}>PARTLY PAID</Text>}
             <View>
-              <KV k="Invoice number" v={invNo} />
-              <KV k="Invoice date" v={invDate} />
-              <KV k="Due date" v={dueDate} />
+              <KV k={`${short} number`} v={invNo} />
+              <KV k={`${short} date`} v={invDate} />
+              <KV k={offer ? 'Valid until' : 'Due date'} v={dueDate} />
             </View>
           </View>
         </View>
@@ -402,7 +434,7 @@ export default function InvoiceDocument({ data }) {
           </View>
           {client && (
             <View style={s.party}>
-              <Text style={s.metaLabel}>Bill to</Text>
+              <Text style={s.metaLabel}>{offer ? 'Prepared for' : 'Bill to'}</Text>
               <Text style={s.partyName}>{client}</Text>
               {has(d.clientContactPerson) && <Text>Attn: {clean(d.clientContactPerson)}</Text>}
               {has(d.clientAddress) && <Text>{clean(d.clientAddress)}</Text>}
@@ -417,35 +449,75 @@ export default function InvoiceDocument({ data }) {
             Project: Website design and development · Pages: {pages.join(', ')}
           </Text>
         )}
-        {items.length > 0 && <ItemTable items={items} money={money} />}
+        {items.length > 0 && <ItemTable items={items} money={money} showStatus={showPay} />}
 
         {anyAmount && (
           <View style={s.totalsWrap}>
             <View style={s.totals}>
-              {items.length > 1 && items.map((it, i) => has(it.amount) && (
+              {items.length > 1 && !showPay && items.map((it, i) => has(it.amount) && (
                 <View key={i} style={s.totalRow}>
                   <Text style={{ color: MUTED }}>{itemShort(it, i)}</Text>
                   <Text>{money(it.amount)}</Text>
                 </View>
               ))}
-              <View style={s.grandRow}>
-                <Text style={{ fontWeight: 700 }}>Total</Text>
-                <Text style={{ fontWeight: 700 }}>{money(total)}</Text>
-              </View>
+              {showPay ? (
+                <>
+                  <View style={[s.totalRow, { borderTopWidth: 0.6, borderTopColor: RULE }]}>
+                    <Text style={{ fontWeight: 700 }}>Total</Text>
+                    <Text style={{ fontWeight: 700 }}>{money(total)}</Text>
+                  </View>
+                  <View style={s.totalRow}>
+                    <Text style={{ color: '#17733a' }}>Amount paid</Text>
+                    <Text style={{ color: '#17733a' }}>− {money(pay.paid)}</Text>
+                  </View>
+                  <View style={s.grandRow}>
+                    <Text style={{ fontWeight: 700 }}>Balance due</Text>
+                    <Text style={{ fontWeight: 700 }}>{money(pay.balance)}</Text>
+                  </View>
+                </>
+              ) : (
+                <View style={s.grandRow}>
+                  <Text style={{ fontWeight: 700 }}>{offer ? 'Total (estimated)' : 'Total'}</Text>
+                  <Text style={{ fontWeight: 700 }}>{money(total)}</Text>
+                </View>
+              )}
             </View>
           </View>
         )}
 
-        {bank.length > 0 && (
-          <View style={s.box} wrap={false}>
+        {showPay && pay.paidItems.length > 0 && (
+          <View style={[s.box, { marginTop: 10, paddingVertical: 8 }]} wrap={false}>
+            <Text style={[s.h2, { marginTop: 0, marginBottom: 3 }]}>Payments received</Text>
+            {pay.paidItems.map((it, i) => (
+              <View key={i} style={[s.kv, { marginBottom: 1 }]}>
+                <Text style={{ flex: 1 }}>
+                  <Text style={s.strong}>{money(it.amount)}</Text>
+                  {'  '}{itemShort(it, items.indexOf(it))}
+                </Text>
+                <Text style={{ color: MUTED }}>
+                  {[shortDate(it.paidDate), clean(it.paidMethod), has(it.paidRef) && `Ref ${clean(it.paidRef)}`].filter(Boolean).join('  ·  ')}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {bank.length > 0 && !offer && pay.state !== 'paid' && (
+          <View style={[s.box, showPay && { marginTop: 10 }]} wrap={false}>
             <Text style={[s.h2, { marginTop: 0 }]}>Payment instructions</Text>
-            {bank.map(([k, v]) => <KV key={k} k={k} v={clean(v)} />)}
-            {invNo && <Text style={[s.small, { marginTop: 6 }]}>Please quote invoice number {invNo} as the payment reference.</Text>}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+              {bank.map(([k, v]) => (
+                <View key={k} style={{ width: '50%', paddingRight: 8 }}>
+                  <KV k={k} v={clean(v)} />
+                </View>
+              ))}
+            </View>
+            {invNo && <Text style={[s.small, { marginTop: 6 }]}>Please quote {short.toLowerCase()} number {invNo} as the payment reference.</Text>}
           </View>
         )}
 
         {(has(d.paymentTerms) || has(d.renewalCharge)) && (
-          <View style={[s.box, { backgroundColor: TINT, borderWidth: 0 }]} wrap={false}>
+          <View style={[s.box, { backgroundColor: TINT, borderWidth: 0 }, showPay && { marginTop: 10 }]} wrap={false}>
             <Text style={[s.h2, { marginTop: 0 }]}>Notes</Text>
             {has(d.paymentTerms) && <Text>{clean(d.paymentTerms)}</Text>}
             {has(d.renewalCharge) && (
@@ -461,8 +533,8 @@ export default function InvoiceDocument({ data }) {
           </View>
         )}
 
-        <Text style={[s.small, { marginTop: 18, textAlign: 'center' }]}>
-          Thank you for choosing Round Logics.{has(d.providerEmail) ? ` For any questions about this invoice, contact ${clean(d.providerEmail)}.` : ''}
+        <Text style={[s.small, { position: 'absolute', bottom: 42, left: 50, right: 50, textAlign: 'center' }]} fixed>
+          Thank you for choosing Round Logics.{has(d.providerEmail) ? ` For any questions about this ${docWord}, contact ${clean(d.providerEmail)}.` : ''}
         </Text>
       </Page>
     </Document>

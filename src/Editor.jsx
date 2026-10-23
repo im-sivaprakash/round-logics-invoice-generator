@@ -3,7 +3,9 @@ import { renderBlob, downloadPdf } from './download.jsx';
 import { sampleData, newInvoiceData, emptyPhase } from './pdf/defaults.js';
 import { CURRENCIES, DOC_TYPES, BANK_KEYS, PROVIDER_KEYS, getSettings } from './settings.js';
 import { fileNameFor, money, itemsTotal, has } from './pdf/format.js';
-import { getInvoice, makeRecord, saveInvoice } from './storage.js';
+import { getInvoice, makeRecord, saveInvoice, syncPaidStatus, markItemsPaid, markItemsUnpaid } from './storage.js';
+import { DOC_KINDS, PAYMENT_METHODS, kindLabel, kindShort, isOffer, tracksPayment, paymentSummary, PAY_STATE_LABEL } from './pdf/docKinds.js';
+import PaymentDialog from './PaymentDialog.jsx';
 import { STATUSES } from './statuses.js';
 
 function Field({ label, hint, children, wide }) {
@@ -32,6 +34,7 @@ export default function Editor({ id, navigate }) {
   const [record, setRecord] = useState(() => (id && getInvoice(id)) || makeRecord(newInvoiceData()));
   const [saved, setSaved] = useState(Boolean(id && getInvoice(id)));
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [payDialog, setPayDialog] = useState(null); // null | 'all' | item index
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const missing = id && !getInvoice(id) && !saved;
@@ -70,7 +73,7 @@ export default function Editor({ id, navigate }) {
     let cancelled = false;
     const t = setTimeout(async () => {
       try {
-        const blob = await renderBlob(data);
+        const blob = await renderBlob(data, record.status);
         if (cancelled) return;
         const url = URL.createObjectURL(blob);
         setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return url; });
@@ -80,7 +83,7 @@ export default function Editor({ id, navigate }) {
       }
     }, 600);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [data, settings]);
+  }, [data, settings, record.status]);
 
   const setData = (fn) => setRecord((r) => ({ ...r, data: typeof fn === 'function' ? fn(r.data) : fn }));
   const set = (key) => (e) => setData((d) => ({ ...d, [key]: e.target.value }));
@@ -97,8 +100,30 @@ export default function Editor({ id, navigate }) {
       return { ...d, phases: list };
     });
 
+  // Item payment changes also keep the status (Paid / Sent) in step
+  const setItems = (fn) =>
+    setRecord((r) => syncPaidStatus({ ...r, data: fn(r.data) }, r.data));
+  const togglePaid = (i, checked) => {
+    if (checked) { setPayDialog(i); return; }
+    setItems((d) => ({
+      ...d,
+      phases: d.phases.map((p, j) => (j === i ? { ...p, paid: false, paidMethod: '', paidDate: '', paidRef: '' } : p)),
+    }));
+  };
+  function confirmPayment(info) {
+    const target = payDialog;
+    setPayDialog(null);
+    if (target === 'all') setItems((d) => markItemsPaid(d, info));
+    else setItems((d) => ({ ...d, phases: d.phases.map((p, j) => (j === target ? { ...p, paid: true, ...info } : p)) }));
+  }
+
   const total = useMemo(() => itemsTotal(data.phases), [data.phases]);
-  const fileName = fileNameFor(data.clientName, data.docType);
+  const label = kindLabel(data);
+  const short = kindShort(data);
+  const offer = isOffer(data);
+  const tracks = tracksPayment(data);
+  const pay = paymentSummary(data, record.status);
+  const fileName = fileNameFor(data.clientName, data.docType, label);
   const withTerms = data.docType !== 'invoice';
   const currency = data.currency || 'INR';
 
@@ -127,7 +152,7 @@ export default function Editor({ id, navigate }) {
       <form className="form" onSubmit={(e) => { e.preventDefault(); download(); }}>
         <div className="editor-bar">
           <div>
-            <strong>{data.invoiceNumber || data.clientName || 'New invoice'}</strong>
+            <strong>{data.invoiceNumber || data.clientName || `New ${label.toLowerCase()}`}</strong>
             <span className="saved">{saved ? 'Saved in this browser' : 'Fill in a client or item to save'}</span>
           </div>
           <div className="editor-actions">
@@ -143,7 +168,21 @@ export default function Editor({ id, navigate }) {
             </button>
           </div>
           <div className="doc-options">
-            <div className="segmented" role="radiogroup" aria-label="Document type">
+            <label className="field kind-field">
+              <span className="label">Document is a</span>
+              <select value={data.docKind || 'invoice'} onChange={set('docKind')}>
+                {DOC_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+              </select>
+            </label>
+            {data.docKind === 'custom' && (
+              <label className="field kind-field">
+                <span className="label">Document title</span>
+                <input value={data.docKindCustom ?? ''} onChange={set('docKindCustom')} placeholder="e.g. Receipt, Work Order" />
+              </label>
+            )}
+          </div>
+          <div className="doc-options">
+            <div className="segmented" role="radiogroup" aria-label="Include terms">
               {DOC_TYPES.map((t) => (
                 <button
                   type="button"
@@ -153,7 +192,7 @@ export default function Editor({ id, navigate }) {
                   className={(data.docType || 'tc-invoice') === t.value ? 'seg active' : 'seg'}
                   onClick={() => setData((d) => ({ ...d, docType: t.value }))}
                 >
-                  {t.label}
+                  {t.value === 'invoice' ? `${label} only` : `T&C + ${label}`}
                 </button>
               ))}
             </div>
@@ -163,18 +202,18 @@ export default function Editor({ id, navigate }) {
           </div>
         </div>
 
-        <Group title="Client & invoice">
+        <Group title={`Client & ${label.toLowerCase()}`}>
           <Field label="Client name" wide>{input('clientName', { placeholder: 'e.g. Venee Art Sculptures' })}</Field>
           <Field label="Client contact person">{input('clientContactPerson')}</Field>
           <Field label="Client email">{input('clientEmail', { type: 'email' })}</Field>
           <Field label="Client phone">{input('clientPhone')}</Field>
           <Field label="Client address" wide>{area('clientAddress', 2)}</Field>
-          <Field label="Invoice number">{input('invoiceNumber', { placeholder: 'e.g. RL-2026-014' })}</Field>
-          <Field label="Invoice date">{input('invoiceDate', { type: 'date' })}</Field>
-          <Field label="Due date" hint="Optional">{input('dueDate', { type: 'date' })}</Field>
+          <Field label={`${short} number`}>{input('invoiceNumber', { placeholder: offer ? 'e.g. QT-2026-007' : 'e.g. RL-2026-014' })}</Field>
+          <Field label={`${short} date`}>{input('invoiceDate', { type: 'date' })}</Field>
+          <Field label={offer ? 'Valid until' : 'Due date'} hint="Optional">{input('dueDate', { type: 'date' })}</Field>
         </Group>
 
-        <Group title="Invoice items">
+        <Group title="Items">
           <Field label="Agreed website pages" hint="Separate with commas" wide>
             {input('pages', { placeholder: 'Home, About, Contact…' })}
           </Field>
@@ -195,10 +234,54 @@ export default function Editor({ id, navigate }) {
               <Field label="Amount">
                 <input inputMode="numeric" value={p.amount} onChange={setItem(i, 'amount')} />
               </Field>
+              {tracks && (
+                <div className={`item-pay${p.paid ? ' is-paid' : ''}`}>
+                  <label className="check">
+                    <input type="checkbox" checked={!!p.paid} onChange={(e) => togglePaid(i, e.target.checked)} disabled={!has(p.amount)} />
+                    <span>{p.paid ? 'Paid' : 'Not paid'}</span>
+                  </label>
+                </div>
+              )}
+              {tracks && p.paid && (
+                <div className="pay-fields wide">
+                  <Field label="Payment method">
+                    <select value={p.paidMethod || ''} onChange={setItem(i, 'paidMethod')}>
+                      {!PAYMENT_METHODS.includes(p.paidMethod) && <option value={p.paidMethod || ''}>{p.paidMethod || 'Choose…'}</option>}
+                      {PAYMENT_METHODS.map((m) => <option key={m}>{m}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Date received">
+                    <input type="date" value={p.paidDate || ''} onChange={setItem(i, 'paidDate')} />
+                  </Field>
+                  <Field label="Reference" wide>
+                    <input value={p.paidRef || ''} onChange={setItem(i, 'paidRef')} placeholder="UTR / transaction ID / cheque no." />
+                  </Field>
+                </div>
+              )}
             </fieldset>
           ))}
           <button type="button" className="ghost wide add" onClick={addItem}>+ Add item</button>
           <div className="total wide">Total <strong>{money(total, currency) || money(0, currency)}</strong></div>
+          {tracks && total > 0 && (
+            <div className={`pay-summary wide ${pay.state}`}>
+              <div>
+                <span className={`pay-state ${pay.state}`}>{PAY_STATE_LABEL[pay.state]}</span>
+                <span className="pay-figures">
+                  Paid <strong>{money(pay.paid, currency)}</strong> · Balance <strong>{money(pay.balance, currency)}</strong>
+                </span>
+              </div>
+              <div className="pay-actions">
+                {pay.state !== 'paid' && (
+                  <button type="button" className="primary sm" onClick={() => setPayDialog('all')}>Mark all paid</button>
+                )}
+                {(pay.state !== 'unpaid' || record.status === 'paid') && (
+                  <button type="button" className="ghost sm" onClick={() => setRecord((r) => ({ ...r, status: r.status === 'paid' ? 'sent' : r.status, data: markItemsUnpaid(r.data) }))}>
+                    Mark unpaid
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           {withTerms && (
             <Field label="Additional features / exclusions" hint="One per line — quoted separately" wide>
               {area('exclusions', 3)}
@@ -258,6 +341,18 @@ export default function Editor({ id, navigate }) {
           {busy ? 'Generating…' : `Download ${fileName}`}
         </button>
       </form>
+
+      <PaymentDialog
+        open={payDialog !== null}
+        title={payDialog === 'all' ? 'Mark all items as paid' : `Mark item ${typeof payDialog === 'number' ? payDialog + 1 : ''} as paid`}
+        amountText={
+          payDialog === 'all'
+            ? `Balance ${money(pay.balance, currency)}`
+            : typeof payDialog === 'number' ? money(data.phases[payDialog]?.amount, currency) : ''
+        }
+        onConfirm={confirmPayment}
+        onClose={() => setPayDialog(null)}
+      />
 
       <section className="preview">
         {error && <div className="error">{error}</div>}
