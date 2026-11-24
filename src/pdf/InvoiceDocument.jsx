@@ -3,6 +3,8 @@ import { Document, Page, View, Text, Svg, Path, StyleSheet } from '@react-pdf/re
 import { LOGO_PATHS, LOGO_VIEWBOX, LOGO_FILL } from './logo.js';
 import { FONT_STACK } from './fonts.js';
 import { kindLabel, kindShort, isOffer, tracksPayment, paymentSummary } from './docKinds.js';
+import { termsModeOf, DEFAULT_TERMS_TITLE } from '../terms/constants.js';
+import MarkdownPdf from './MarkdownPdf.jsx';
 import {
   has, clean, money as formatMoney, toNumber, usesQty, formatQty, itemRate, formatDate, splitList, splitLines, countWord, activeItems, itemTitle, itemShort,
 } from './format.js';
@@ -216,6 +218,8 @@ export default function InvoiceDocument({ data }) {
   const d = data;
   const money = (v) => formatMoney(v, d.currency || 'INR');
   const withTerms = d.docType !== 'invoice';
+  // 'standard' (built-in, unchanged) | 'custom' (your Markdown) | 'pdf' (your PDF, merged in download.jsx)
+  const termsMode = withTerms ? termsModeOf(d) : 'none';
   const label = kindLabel(d);            // "Invoice", "Quotation", "Receipt"…
   const short = kindShort(d);            // "Invoice", "Quote"…
   const docWord = label.toLowerCase();
@@ -258,8 +262,36 @@ export default function InvoiceDocument({ data }) {
       author="Round Logics"
       subject="Website project Terms & Conditions and Invoice"
     >
+      {/* ---------------- YOUR OWN T&C (written, uploaded or from a saved template) ---------------- */}
+      {termsMode === 'custom' && (
+        <Page size="A4" style={s.page}>
+          <Chrome label={clean(d.termsTitle) || DEFAULT_TERMS_TITLE} client={client} />
+          <Text style={[s.title, { marginBottom: 10 }]}>{clean(d.termsTitle) || DEFAULT_TERMS_TITLE}</Text>
+          <View style={s.metaRow}>
+            <Meta label="Service provider" value={provider} />
+            <Meta label="Client" value={client} />
+            <Meta label="Reference" value={invNo} />
+            <Meta label="Date" value={invDate} />
+          </View>
+          <MarkdownPdf markdown={d.termsBody} />
+          {d.termsSignature !== false && (
+            <View style={[s.signRow, { marginTop: 16 }]} wrap={false}>
+              {[['For Round Logics', provider], ['For the Client', client]].map(([lbl, name]) => (
+                <View key={lbl} style={s.signBox}>
+                  <Text style={s.strong}>{lbl}</Text>
+                  {has(name) && <Text style={s.small}>{name}</Text>}
+                  <Text style={s.signLine}>Name:</Text>
+                  <Text style={s.signLine}>Signature:</Text>
+                  <Text style={s.signLine}>Date:</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </Page>
+      )}
+
       {/* ---------------- TERMS & CONDITIONS (skipped for "Invoice only") ---------------- */}
-      {withTerms && (
+      {termsMode === 'standard' && (
       <Page size="A4" style={s.page}>
         <Chrome label="Terms & Conditions" client={client} />
 
@@ -538,7 +570,7 @@ export default function InvoiceDocument({ data }) {
                 Annual domain and hosting renewal: {money(d.renewalCharge)} per year (billed separately).
               </Text>
             )}
-            {withTerms && (
+            {(withTerms || d._termsAttached) && (
               <Text style={{ marginTop: 3 }}>
                 Additional revisions and out-of-scope work are charged as set out in the Terms & Conditions above.
               </Text>

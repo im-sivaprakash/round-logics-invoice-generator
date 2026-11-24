@@ -1,9 +1,12 @@
-// All invoices live in this browser's localStorage under one key.
+// Invoice storage used by the current screens. It goes through the shared data layer
+// (src/data): today that is a localStorage collection; when a database adapter is plugged
+// in there, switch these calls to the async `db.invoices` repository methods.
 import { defaultData } from './pdf/defaults.js';
 import { getSettings, saveSettings } from './settings.js';
 import { itemsTotal } from './pdf/format.js';
+import { collections } from './data/index.js';
 
-const KEY = 'rl-invoices-v1';
+const invoices = collections.invoices.sync;
 const LEGACY_KEY = 'rl-invoice-form-v1';
 
 const uid = () =>
@@ -11,29 +14,21 @@ const uid = () =>
 
 function read() {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw);
-    // One-time move of the single form saved by the first version of the app
-    const legacy = localStorage.getItem(LEGACY_KEY);
-    if (legacy) {
-      const rec = makeRecord({ ...defaultData, ...JSON.parse(legacy) });
-      write([rec]);
-      localStorage.removeItem(LEGACY_KEY);
-      return [rec];
+    if (invoices.isEmpty()) {
+      // One-time move of the single form saved by the first version of the app
+      const legacy = localStorage.getItem(LEGACY_KEY);
+      if (legacy) {
+        const rec = makeRecord({ ...defaultData, ...JSON.parse(legacy) });
+        write([rec]);
+        localStorage.removeItem(LEGACY_KEY);
+        return [rec];
+      }
     }
   } catch { /* storage unavailable or corrupt */ }
-  return [];
+  return invoices.list();
 }
 
-function write(list) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(list));
-    window.dispatchEvent(new Event('invoices-changed'));
-    return true;
-  } catch {
-    return false;
-  }
-}
+const write = (list) => invoices.replaceAll(list);
 
 export function makeRecord(data, extra = {}) {
   const now = new Date().toISOString();
@@ -73,7 +68,14 @@ export function setStatus(id, status) {
 export const recordTotal = (rec) => itemsTotal(rec?.data?.phases);
 
 export function exportAll() {
-  return JSON.stringify({ app: 'round-logics-invoice-generator', version: 2, settings: getSettings(), invoices: read() }, null, 2);
+  // Uploaded PDF files stay in this browser (IndexedDB); only their names are in the backup.
+  return JSON.stringify({
+    app: 'round-logics-invoice-generator',
+    version: 3,
+    settings: getSettings(),
+    termsTemplates: collections.termsTemplates.sync.list(),
+    invoices: read(),
+  }, null, 2);
 }
 
 // Merges invoices from a backup file; same id = overwritten by the backup.
@@ -85,6 +87,11 @@ export function importAll(text) {
   incoming.filter((r) => r && r.id && r.data).forEach((r) => byId.set(r.id, r));
   write([...byId.values()]);
   if (parsed.settings && typeof parsed.settings === 'object') saveSettings({ ...getSettings(), ...parsed.settings });
+  if (Array.isArray(parsed.termsTemplates)) {
+    const tpl = new Map(collections.termsTemplates.sync.list().map((t) => [t.id, t]));
+    parsed.termsTemplates.filter((t) => t && t.id).forEach((t) => tpl.set(t.id, t));
+    collections.termsTemplates.sync.replaceAll([...tpl.values()]);
+  }
   return incoming.length;
 }
 

@@ -9,7 +9,10 @@ import { defaultData, newInvoiceData } from '../src/pdf/defaults.js';
 import { fileNameFor } from '../src/pdf/format.js';
 
 const f = (n) => path.resolve('src/assets/fonts', n);
-registerFonts(Object.fromEntries([400, 600, 700].map((w) => [w, { latin: f(`NotoSans-${w}.woff`), ext: f(`NotoSansExt-${w}.woff`) }])));
+registerFonts(
+  Object.fromEntries([400, 600, 700].map((w) => [w, { latin: f(`NotoSans-${w}.woff`), ext: f(`NotoSansExt-${w}.woff`) }])),
+  Object.fromEntries([400, 700].map((w) => [w, { latin: f(`NotoSans-${w}-italic.woff`), ext: f(`NotoSansExt-${w}-italic.woff`) }])),
+);
 
 const dir = process.argv[2] || '.';
 const out = path.resolve(dir, fileNameFor(defaultData.clientName));

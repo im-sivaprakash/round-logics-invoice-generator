@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CURRENCIES, DOC_TYPES, defaultSettings, getSettings, saveSettings } from './settings.js';
 import { money } from './pdf/format.js';
+import TermsTemplatesCard from './terms/TermsTemplatesCard.jsx';
 
 function Field({ label, hint, children, wide }) {
   return (
@@ -108,6 +109,8 @@ export default function Settings({ navigate }) {
           <button className="primary" type="button" onClick={() => navigate('#/new')}>Done</button>
         </div>
       </form>
+
+      <TermsTemplatesCard />
     </main>
   );
 }
