@@ -7,6 +7,8 @@ import { getInvoice, makeRecord, saveInvoice, syncPaidStatus, markItemsPaid, mar
 import { DOC_KINDS, PAYMENT_METHODS, kindLabel, kindShort, isOffer, tracksPayment, paymentSummary, PAY_STATE_LABEL } from './pdf/docKinds.js';
 import PaymentDialog from './PaymentDialog.jsx';
 import { STATUSES } from './statuses.js';
+import TermsPanel from './terms/TermsPanel.jsx';
+import { applyTemplate, getDefaultTemplate } from './terms/model.js';
 
 function Field({ label, hint, children, wide }) {
   return (
@@ -38,6 +40,18 @@ export default function Editor({ id, navigate }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const missing = id && !getInvoice(id) && !saved;
+
+  // New invoices start with the default T&C template, if one is set in Settings
+  useEffect(() => {
+    if (id) return;
+    let alive = true;
+    getDefaultTemplate()
+      .then((tpl) => {
+        if (alive && tpl) setRecord((r) => (r.data.termsMode ? r : { ...r, data: applyTemplate(r.data, tpl) }));
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [id]);
   const data = record.data;
   const [settings, setSettings] = useState(getSettings);
   useEffect(() => {
@@ -306,6 +320,12 @@ export default function Editor({ id, navigate }) {
             </Field>
           )}
         </Group>
+
+        {withTerms && (
+          <Group title="Terms & Conditions document">
+            <TermsPanel data={data} setData={setData} />
+          </Group>
+        )}
 
         {withTerms ? (
         <Group title="Terms & conditions" defaultOpen={false}>
